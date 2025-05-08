@@ -10,6 +10,7 @@ import {
 } from "../services/cajaService";
 import { toast } from "react-toastify";
 import { generarFacturaPDF } from "../services/pdfGenerator";
+import api from './api';
 
 const FacturadorPanel = () => {
   // Estados del componente
