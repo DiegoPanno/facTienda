@@ -120,8 +120,9 @@ const ProductoForm = ({
     }
   
     // Convertir y validar números
-    const precioBase = parseFloat(producto.precioBase) || 0;
-    const margen = parseFloat(producto.margen) || 0;
+    const precioBase = parseFloat(producto.precioBase.toString().replace(',', '.')) || 0;
+    const margen = parseFloat(producto.margen.toString().replace(',', '.')) || 0;
+
   
     if (isNaN(precioBase) || precioBase <= 0) {
       alert("El precio base debe ser un número positivo");
