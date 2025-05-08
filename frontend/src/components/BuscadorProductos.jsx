@@ -5,6 +5,7 @@ const BuscadorProductos = ({ onSeleccionar }) => {
   const [query, setQuery] = useState("");
   const [productos, setProductos] = useState([]);
   const [mostrarResultados, setMostrarResultados] = useState(false);
+  const inputRef = useRef(null); 
 
   useEffect(() => {
     const cargarProductos = async () => {
@@ -25,12 +26,27 @@ const BuscadorProductos = ({ onSeleccionar }) => {
   return (
     <div style={{ marginBottom: "1rem" }}>
       <input
+        ref={inputRef}
         type="text"
         placeholder="Buscar por ID o nombre..."
         value={query}
         onChange={(e) => {
-          setQuery(e.target.value);
-          setMostrarResultados(e.target.value.length > 0);
+          const valor = e.target.value;
+          setQuery(valor);
+
+          // Buscar coincidencia exacta por ID (ideal para código de barras)
+          const productoEncontrado = productos.find(
+            (p) => p.id?.toString().toLowerCase() === valor.toLowerCase()
+          );
+
+          if (productoEncontrado) {
+            onSeleccionar(productoEncontrado); // lo manda al carrito
+            setQuery(""); // borra el input
+            setMostrarResultados(false); // oculta sugerencias
+            inputRef.current?.focus();
+          } else {
+            setMostrarResultados(valor.length > 0);
+          }
         }}
         style={{
           width: "100%",
@@ -60,6 +76,7 @@ const BuscadorProductos = ({ onSeleccionar }) => {
                   onSeleccionar(prod);
                   setQuery("");
                   setMostrarResultados(false);
+                  inputRef.current?.focus();
                 }}
                 style={{
                   padding: "0.5rem",
