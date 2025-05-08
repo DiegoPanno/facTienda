@@ -531,12 +531,7 @@ const FacturadorPanel = () => {
         fecha: new Date().toISOString().slice(0, 10).replace(/-/g, ""), // Formato YYYYMMDD
       };
   
-      const response = await fetch("/api/afip/emitir-factura-c", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(datosFactura),
-      });
-  
+      const response = await api.post('/api/afip/emitir-factura-c', datosFactura);
       const resultado = await response.json();
   
       if (!response.ok) {
