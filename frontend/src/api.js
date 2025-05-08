@@ -23,4 +23,4 @@ export const emitirFactura = async (facturaData) => {
   return await api.post('/api/facturar', facturaData);
 };
 
-export default api; // Esto es lo que falta, exportar `api` como default
+export default api;
