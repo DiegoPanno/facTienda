@@ -505,61 +505,63 @@ const FacturadorPanel = () => {
   }
 
   // Función para enviar la factura a AFIP
-  async function handleEnviarAFIP() {
-    try {
-      if (tipoDocumento === "Factura C" && !clienteSeleccionado) {
-        throw new Error("Seleccione un cliente");
-      }
-  
-      // Datos del receptor
-      const receptor = prepararDatosReceptor(clienteSeleccionado);
-  
-      // Productos
-      const items = carrito.map((prod, index) => ({
-        codigo: prod.id || index + 1,
-        descripcion: prod.titulo,
-        cantidad: prod.cantidad,
-        precioUnitario: prod.precioVenta,
-        subtotal: prod.cantidad * prod.precioVenta,
-      }));
-  
-      const total = items.reduce((acc, item) => acc + item.subtotal, 0);
-  
-      const datosFactura = {
-        cliente: receptor,
-        importeTotal: total,
-        importeNeto: getSubtotal(),
-        fecha: new Date().toISOString().slice(0, 10).replace(/-/g, ""), // Formato YYYYMMDD
-      };
-  
-      const response = await api.post('/api/afip/emitir-factura-c', datosFactura);
-      const resultado = await response.json();
-  
-      if (!response.ok) {
-        throw new Error(resultado.error || "Error al emitir factura");
-      }
-  
-      // Extraer información de la respuesta
-      const numeroFactura = resultado.numeroFactura || "0000-00000000";
-      const cae = resultado.cae || "Sin CAE";
-      const vencimientoCae = resultado.vencimientoCae || "No especificado";
-      const archivoPdf = resultado.archivoPdf || "";
-  
-      setCaeInfo({
-        cae,
-        vencimiento: vencimientoCae,
-        numeroFactura,
-        numero: numeroFactura.split('-')[1],
-        fecha: new Date().toLocaleDateString("es-AR"),
-        archivoPdf
-      });
-  
-      toast.success(`✅ Factura emitida. N°: ${numeroFactura} - CAE: ${cae}`);
-    } catch (error) {
-      console.error("Error en handleEnviarAFIP:", error);
-      toast.error(error.message || "Error al enviar factura a AFIP");
+  // Función para enviar la factura a AFIP
+async function handleEnviarAFIP() {
+  try {
+    if (tipoDocumento === "Factura C" && !clienteSeleccionado) {
+      throw new Error("Seleccione un cliente");
     }
+
+    // Datos del receptor
+    const receptor = prepararDatosReceptor(clienteSeleccionado);
+
+    // Productos
+    const items = carrito.map((prod, index) => ({
+      codigo: prod.id || index + 1,
+      descripcion: prod.titulo,
+      cantidad: prod.cantidad,
+      precioUnitario: prod.precioVenta,
+      subtotal: prod.cantidad * prod.precioVenta,
+    }));
+
+    const total = items.reduce((acc, item) => acc + item.subtotal, 0);
+
+    // Datos antes de la adición de datosFactura
+    const response = await api.post('/api/afip/emitir-factura-c', {
+      cliente: receptor,
+      importeTotal: total,
+      importeNeto: getSubtotal(),
+      fecha: new Date().toISOString().slice(0, 10).replace(/-/g, ""), // Formato YYYYMMDD
+    });
+    
+    const resultado = response.data;  // Usamos data directamente porque axios devuelve los datos como JSON.
+
+    if (!response.ok) {
+      throw new Error(resultado.error || "Error al emitir factura");
+    }
+
+    // Extraer información de la respuesta
+    const numeroFactura = resultado.numeroFactura || "0000-00000000";
+    const cae = resultado.cae || "Sin CAE";
+    const vencimientoCae = resultado.vencimientoCae || "No especificado";
+    const archivoPdf = resultado.archivoPdf || "";
+
+    setCaeInfo({
+      cae,
+      vencimiento: vencimientoCae,
+      numeroFactura,
+      numero: numeroFactura.split('-')[1],
+      fecha: new Date().toLocaleDateString("es-AR"),
+      archivoPdf
+    });
+
+    toast.success(`✅ Factura emitida. N°: ${numeroFactura} - CAE: ${cae}`);
+  } catch (error) {
+    console.error("Error en handleEnviarAFIP:", error);
+    toast.error(error.message || "Error al enviar factura a AFIP");
   }
+}
+
 
   // Función auxiliar para validar CUIT
   const validarCUIT = (cuit) => {
