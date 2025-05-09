@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+
 import { obtenerProductos } from "../services/productService";
+import { useState, useEffect, useRef } from "react";
 
 const BuscadorProductos = ({ onSeleccionar }) => {
   const [query, setQuery] = useState("");
