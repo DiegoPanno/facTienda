@@ -19,9 +19,12 @@ export async function generarFacturaPDF(datos) {
       domicilio: "9 DE JULIO 2957, MAR DEL PLATA",
       actividad: "Venta de productos libres de gluten",
       telefono: "2236364740",
-      ptoVta: datos.ptoVta || 3
+      ptoVta: 3 // Estático por ahora
     };
 
+    // Datos del cliente
+    const cliente = datos.cliente;
+    
     // Generar QR
     const datosQR = {
       ver: 1,
@@ -29,14 +32,14 @@ export async function generarFacturaPDF(datos) {
       cuit: empresa.cuit,
       ptoVta: empresa.ptoVta,
       tipoCmp: 11, // Factura C
-      nroCmp: datos.nroFacturaCompleto ? parseInt(datos.nroFacturaCompleto.split('-')[1]) : 0,
-      importe: datos.total,
+      nroCmp: datos.nroFacturaCompleto || `${empresa.ptoVta}-33`, // Factura 33
+      importe: datos.importeTotal,
       moneda: 'PES',
       ctz: 1.00,
-      tipoDocRec: datos.docTipo === "CUIT" ? 80 : 99,
-      nroDocRec: parseInt(datos.docNro.replace(/\D/g, '')) || 0,
+      tipoDocRec: cliente.tipoDoc === 96 ? 99 : 80, // Tipo de documento del receptor (CUIT o DNI)
+      nroDocRec: cliente.nroDoc,
       tipoCodAut: 'E',
-      codAut: datos.cae
+      codAut: datos.CAE
     };
 
     const qrUrl = `https://www.afip.gob.ar/fe/qr/?p=${Buffer.from(JSON.stringify(datosQR)).toString('base64')}`;
@@ -51,20 +54,18 @@ export async function generarFacturaPDF(datos) {
     page.drawText(`Teléfono: ${empresa.telefono}`, { x: 50, y: 725, size: 10, font });
 
     // Título del documento
-    page.drawText(`FACTURA C N° ${datos.nroFacturaCompleto || `${empresa.ptoVta}-00000000`}`, {
+    page.drawText(`FACTURA C N° ${datos.nroFacturaCompleto || `${empresa.ptoVta}-33`}`, {
       x: 50, y: 700, size: 14, font: fontBold, color: rgb(0, 0, 0)
     });
 
     // Datos del cliente
-    page.drawText(`Cliente: ${datos.nombreCliente}`, { x: 50, y: 670, size: 12, font: fontBold });
-    page.drawText(`${datos.docTipo}: ${datos.docNro}`, { x: 50, y: 650, size: 12, font });
-    page.drawText(`Fecha: ${datos.fecha}`, { x: 400, y: 670, size: 12, font });
+    page.drawText(`Cliente: ${cliente.nombre}`, { x: 50, y: 670, size: 12, font: fontBold });
+    page.drawText(`${cliente.tipoDoc === 96 ? 'DNI' : 'CUIT'}: ${cliente.nroDoc}`, { x: 50, y: 650, size: 12, font });
+    page.drawText(`Fecha: ${datos.fecha.split('').slice(0, 4).join('')}-${datos.fecha.split('').slice(4, 6).join('')}-${datos.fecha.split('').slice(6, 8).join('')}`, { x: 400, y: 670, size: 12, font });
 
-    // Tabla de productos
+    // Tabla de productos (suponiendo que 'productos' está presente en 'datos')
     const startY = 620;
     const columnPositions = [50, 300, 400, 500]; // x positions for columns
-
-    // Encabezados de tabla
     page.drawText('Descripción', { x: columnPositions[0], y: startY, size: 10, font: fontBold });
     page.drawText('Cantidad', { x: columnPositions[1], y: startY, size: 10, font: fontBold });
     page.drawText('P. Unitario', { x: columnPositions[2], y: startY, size: 10, font: fontBold });
@@ -78,7 +79,7 @@ export async function generarFacturaPDF(datos) {
       color: rgb(0, 0, 0)
     });
 
-    // Productos
+    // Productos (suponiendo que los datos están disponibles)
     let currentY = startY - 20;
     datos.productos.forEach(producto => {
       page.drawText(producto.descripcion || producto.titulo, { x: columnPositions[0], y: currentY, size: 10, font });
@@ -90,16 +91,16 @@ export async function generarFacturaPDF(datos) {
 
     // Totales
     currentY -= 20;
-    page.drawText(`Subtotal: $${datos.subtotal.toFixed(2)}`, { x: 400, y: currentY, size: 12, font });
+    page.drawText(`Subtotal: $${datos.importeNeto.toFixed(2)}`, { x: 400, y: currentY, size: 12, font });
     currentY -= 15;
-    page.drawText(`IVA 21%: $${datos.iva.toFixed(2)}`, { x: 400, y: currentY, size: 12, font });
+    page.drawText(`IVA 21%: $${(datos.importeTotal - datos.importeNeto).toFixed(2)}`, { x: 400, y: currentY, size: 12, font });
     currentY -= 15;
-    page.drawText(`Total: $${datos.total.toFixed(2)}`, { x: 400, y: currentY, size: 14, font: fontBold });
+    page.drawText(`Total: $${datos.importeTotal.toFixed(2)}`, { x: 400, y: currentY, size: 14, font: fontBold });
 
     // CAE y QR
     currentY -= 40;
-    page.drawText(`CAE: ${datos.cae}`, { x: 50, y: currentY, size: 12, font: fontBold });
-    page.drawText(`Vencimiento CAE: ${datos.caeVto}`, { x: 50, y: currentY - 15, size: 12, font });
+    page.drawText(`CAE: ${datos.CAE}`, { x: 50, y: currentY, size: 12, font: fontBold });
+    page.drawText(`Vencimiento CAE: ${datos.CAEVto}`, { x: 50, y: currentY - 15, size: 12, font });
 
     // Insertar QR
     try {

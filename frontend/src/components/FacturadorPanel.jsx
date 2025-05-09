@@ -10,7 +10,7 @@ import {
 } from "../services/cajaService";
 import { toast } from "react-toastify";
 import { generarFacturaPDF } from "../services/pdfGenerator";
-import api from '../api';
+import api from "../api";
 
 const FacturadorPanel = () => {
   // Estados del componente
@@ -506,62 +506,63 @@ const FacturadorPanel = () => {
 
   // Función para enviar la factura a AFIP
   // Función para enviar la factura a AFIP
-async function handleEnviarAFIP() {
-  try {
-    if (tipoDocumento === "Factura C" && !clienteSeleccionado) {
-      throw new Error("Seleccione un cliente");
+  async function handleEnviarAFIP() {
+    try {
+      if (tipoDocumento === "Factura C" && !clienteSeleccionado) {
+        throw new Error("Seleccione un cliente");
+      }
+
+      // Datos del receptor
+      const receptor = prepararDatosReceptor(clienteSeleccionado);
+
+      // Productos
+      const items = carrito.map((prod, index) => ({
+        codigo: prod.id || index + 1,
+        descripcion: prod.titulo,
+        cantidad: prod.cantidad,
+        precioUnitario: prod.precioVenta,
+        subtotal: prod.cantidad * prod.precioVenta,
+      }));
+
+      const total = items.reduce((acc, item) => acc + item.subtotal, 0);
+
+      // Datos antes de la adición de datosFactura
+      const response = await api.post("/api/afip/emitir-factura-c", {
+        cliente: receptor,
+        importeTotal: total,
+        importeNeto: getSubtotal(),
+        fecha: new Date().toISOString().slice(0, 10).replace(/-/g, ""), // Formato YYYYMMDD
+      });
+
+      const resultado = response.data; // Usamos data directamente porque axios devuelve los datos como JSON.
+
+      if (resultado?.Resultado !== "A") {
+        throw new Error(
+          resultado?.Observaciones?.Obs?.[0]?.Msg || "Error al emitir factura"
+        );
+      }
+
+      // Extraer información de la respuesta
+      const numeroFactura = resultado.numeroFactura || "0000-00000000";
+      const cae = resultado.cae || "Sin CAE";
+      const vencimientoCae = resultado.vencimientoCae || "No especificado";
+      const archivoPdf = resultado.archivoPdf || "";
+
+      setCaeInfo({
+        cae,
+        vencimiento: vencimientoCae,
+        numeroFactura,
+        numero: numeroFactura.split("-")[1],
+        fecha: new Date().toLocaleDateString("es-AR"),
+        archivoPdf,
+      });
+
+      toast.success(`✅ Factura emitida. N°: ${numeroFactura} - CAE: ${cae}`);
+    } catch (error) {
+      console.error("Error en handleEnviarAFIP:", error);
+      toast.error(error.message || "Error al enviar factura a AFIP");
     }
-
-    // Datos del receptor
-    const receptor = prepararDatosReceptor(clienteSeleccionado);
-
-    // Productos
-    const items = carrito.map((prod, index) => ({
-      codigo: prod.id || index + 1,
-      descripcion: prod.titulo,
-      cantidad: prod.cantidad,
-      precioUnitario: prod.precioVenta,
-      subtotal: prod.cantidad * prod.precioVenta,
-    }));
-
-    const total = items.reduce((acc, item) => acc + item.subtotal, 0);
-
-    // Datos antes de la adición de datosFactura
-    const response = await api.post('/api/afip/emitir-factura-c', {
-      cliente: receptor,
-      importeTotal: total,
-      importeNeto: getSubtotal(),
-      fecha: new Date().toISOString().slice(0, 10).replace(/-/g, ""), // Formato YYYYMMDD
-    });
-    
-    const resultado = response.data;  // Usamos data directamente porque axios devuelve los datos como JSON.
-
-    if (!response.ok) {
-      throw new Error(resultado.error || "Error al emitir factura");
-    }
-
-    // Extraer información de la respuesta
-    const numeroFactura = resultado.numeroFactura || "0000-00000000";
-    const cae = resultado.cae || "Sin CAE";
-    const vencimientoCae = resultado.vencimientoCae || "No especificado";
-    const archivoPdf = resultado.archivoPdf || "";
-
-    setCaeInfo({
-      cae,
-      vencimiento: vencimientoCae,
-      numeroFactura,
-      numero: numeroFactura.split('-')[1],
-      fecha: new Date().toLocaleDateString("es-AR"),
-      archivoPdf
-    });
-
-    toast.success(`✅ Factura emitida. N°: ${numeroFactura} - CAE: ${cae}`);
-  } catch (error) {
-    console.error("Error en handleEnviarAFIP:", error);
-    toast.error(error.message || "Error al enviar factura a AFIP");
   }
-}
-
 
   // Función auxiliar para validar CUIT
   const validarCUIT = (cuit) => {
@@ -602,7 +603,7 @@ async function handleEnviarAFIP() {
       toast.error("Primero debe emitir la factura con AFIP");
       return;
     }
-  
+
     try {
       // Generar el PDF
       const pdfBytes = await generarFacturaPDF({
@@ -613,9 +614,10 @@ async function handleEnviarAFIP() {
           ? `${clienteSeleccionado.nombre} ${clienteSeleccionado.apellido}`
           : "CONSUMIDOR FINAL",
         docTipo: tipoDocumento === "Factura C" ? "CUIT" : "DNI",
-        docNro: tipoDocumento === "Factura C"
-          ? clienteSeleccionado?.cuit || "0"
-          : clienteSeleccionado?.documento || "0",
+        docNro:
+          tipoDocumento === "Factura C"
+            ? clienteSeleccionado?.cuit || "0"
+            : clienteSeleccionado?.documento || "0",
         fecha: caeInfo.fecha,
         productos: carrito,
         total: total,
@@ -626,18 +628,21 @@ async function handleEnviarAFIP() {
         iva: getIVA(),
         subtotal: getSubtotal(),
       });
-  
+
       // Crear blob y descargar
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const blob = new Blob([pdfBytes], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
+      const link = document.createElement("a");
       link.href = url;
-      link.download = `Factura_C_${caeInfo.numeroFactura.replace('/', '-')}.pdf`;
+      link.download = `Factura_C_${caeInfo.numeroFactura.replace(
+        "/",
+        "-"
+      )}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-  
+
       toast.success("Factura generada con éxito");
     } catch (error) {
       console.error("Error al generar factura:", error);
