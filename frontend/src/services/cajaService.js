@@ -144,6 +144,19 @@ export const registrarMovimiento = async (idCaja, movimiento) => {
       fecha: serverTimestamp()
     });
 
+    const cajaRef = doc(db, "caja", idCaja);
+
+    if (movimiento.tipo === "ingreso") {
+      await updateDoc(cajaRef, {
+        saldoActual: increment(movimiento.monto),
+        totalIngresado: increment(movimiento.monto)
+      });
+    } else if (movimiento.tipo === "egreso") {
+      await updateDoc(cajaRef, {
+        saldoActual: increment(-movimiento.monto)
+      });
+    }
+
     return { success: true };
   } catch (error) {
     await registrarError(error, 'error_registro_movimiento', { idCaja, movimiento });
@@ -151,6 +164,7 @@ export const registrarMovimiento = async (idCaja, movimiento) => {
     throw error;
   }
 };
+
 
 export const obtenerCajaActiva = async () => {
   const cajaRef = collection(db, 'caja'); // ✅ singular
