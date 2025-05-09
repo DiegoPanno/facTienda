@@ -20,7 +20,7 @@ export const checkServerStatus = async () => {
 };
 
 export const emitirFactura = async (facturaData) => {
-  return await api.post('/api/afip/emitir-factura-c', facturaData);
+  return await api.post('/api/afip/emitir-factura-c', facturaData); 
 };
 
 export default api;
