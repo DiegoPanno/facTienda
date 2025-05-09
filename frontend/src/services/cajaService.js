@@ -134,12 +134,20 @@ export const registrarMovimiento = async (idCaja, movimiento) => {
     if (!movimiento?.tipo || !['ingreso', 'egreso', 'sistema'].includes(movimiento.tipo)) {
       throw new Error("Tipo de movimiento inválido");
     }
-    if (!movimiento?.usuario) throw new Error("Usuario no especificado");
     if (isNaN(movimiento.monto)) throw new Error("Monto inválido");
 
-    const movimientoRef = collection(db, "caja", idCaja, "movimientos");
-    await addDoc(movimientoRef, {
+    // Usuario por defecto si no se proporciona
+    const movimientoConUsuario = {
       ...movimiento,
+      usuario: movimiento.usuario || {
+        nombre: "Sistema",
+        uid: "system-001"
+      }
+    };
+
+    const movimientoRef = collection(db, "caja", idCaja, "movimientos");
+    const docRef = await addDoc(movimientoRef, {
+      ...movimientoConUsuario,
       monto: Number(movimiento.monto),
       fecha: serverTimestamp()
     });
@@ -157,7 +165,7 @@ export const registrarMovimiento = async (idCaja, movimiento) => {
       });
     }
 
-    return { success: true };
+    return { success: true, id: docRef.id };
   } catch (error) {
     await registrarError(error, 'error_registro_movimiento', { idCaja, movimiento });
     console.error("Error al registrar movimiento:", error);

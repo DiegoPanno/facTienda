@@ -158,68 +158,64 @@ const FacturadorPanel = () => {
     }
   };
 
-  const handleCobrar = async () => {
-    if (isSubmitting) return;
-    setIsSubmitting(true);
+const handleCobrar = async () => {
+  if (isSubmitting) return;
+  setIsSubmitting(true);
 
-    if (carrito.length === 0) {
-      setError("No hay productos en el carrito");
-      setIsSubmitting(false);
-      return;
-    }
+  if (carrito.length === 0) {
+    setError("No hay productos en el carrito");
+    setIsSubmitting(false);
+    return;
+  }
 
-    if (!cajaAbierta?.id) {
-      setError("No hay caja abierta. Abra caja primero.");
-      setIsSubmitting(false);
-      return;
-    }
+  if (!cajaAbierta?.id) {
+    setError("No hay caja abierta. Abra caja primero.");
+    setIsSubmitting(false);
+    return;
+  }
 
-    try {
-      setLoading(true);
-      setError(null);
+  try {
+    setLoading(true);
+    setError(null);
 
-      await generarPDF();
+    await generarPDF();
 
-      // Usa las funciones que ya tienes definidas
-      const auth = getAuth();
-      const usuario = auth.currentUser;
+    const movimiento = {
+      tipo: "ingreso",
+      monto: getSubtotal(),
+      descripcion: `Venta ${tipoDocumento || "Recibo"} ${
+        clienteSeleccionado?.nombre || "Consumidor Final"
+      }`,
+      formaPago: medioPago || "efectivo",
+      productos: carrito.map((item) => ({
+        id: item.id,
+        nombre: item.titulo,
+        cantidad: item.cantidad,
+        precio: item.precioVenta,
+        subtotal: item.precioVenta * item.cantidad,
+      })),
+      iva: getIVA(),
+      totalConIva: total,
+      usuario: {
+        nombre: "Administrador", // Nombre fijo
+        uid: "admin-001", // ID fijo
+      },
+    };
 
-      const movimiento = {
-        tipo: "ingreso",
-        monto: getSubtotal(),
-        descripcion: `Venta ${tipoDocumento || "Recibo"} ${
-          clienteSeleccionado?.nombre || "Consumidor Final"
-        }`,
-        formaPago: medioPago || "efectivo",
-        productos: carrito.map((item) => ({
-          id: item.id,
-          nombre: item.titulo,
-          cantidad: item.cantidad,
-          precio: item.precioVenta,
-          subtotal: item.precioVenta * item.cantidad,
-        })),
-        iva: getIVA(),
-        totalConIva: total,
-        usuario: {
-          nombre: usuario.displayName || usuario.email || "Desconocido",
-          uid: usuario.uid,
-        },
-      };
+    await registrarMovimiento(cajaAbierta.id, movimiento);
 
-      await registrarMovimiento(cajaAbierta.id, movimiento);
-
-      setCarrito([]);
-      setTotal(0);
-      setCobroRealizado(true);
-      setSuccess("✅ Venta registrada correctamente en caja");
-    } catch (error) {
-      console.error("Error al registrar cobro:", error);
-      setError(`❌ Error al registrar cobro: ${error.message}`);
-    } finally {
-      setLoading(false);
-      setIsSubmitting(false);
-    }
-  };
+    setCarrito([]);
+    setTotal(0);
+    setCobroRealizado(true);
+    setSuccess("✅ Venta registrada correctamente en caja");
+  } catch (error) {
+    console.error("Error al registrar cobro:", error);
+    setError(`❌ Error al registrar cobro: ${error.message}`);
+  } finally {
+    setLoading(false);
+    setIsSubmitting(false);
+  }
+};
 
   // Componente de vista previa del comprobante
   const VistaPreviaRecibo = ({
