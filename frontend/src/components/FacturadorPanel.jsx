@@ -11,6 +11,7 @@ import {
 import { toast } from "react-toastify";
 import { generarFacturaPDF } from "../services/pdfGenerator";
 import api from "../api";
+import { getAuth } from "firebase/auth";
 
 const FacturadorPanel = () => {
   // Estados del componente
@@ -180,9 +181,12 @@ const FacturadorPanel = () => {
       await generarPDF();
 
       // Usa las funciones que ya tienes definidas
+      const auth = getAuth();
+      const usuario = auth.currentUser;
+
       const movimiento = {
         tipo: "ingreso",
-        monto: getSubtotal(), // Usamos la función getSubtotal()
+        monto: getSubtotal(),
         descripcion: `Venta ${tipoDocumento || "Recibo"} ${
           clienteSeleccionado?.nombre || "Consumidor Final"
         }`,
@@ -194,8 +198,12 @@ const FacturadorPanel = () => {
           precio: item.precioVenta,
           subtotal: item.precioVenta * item.cantidad,
         })),
-        iva: getIVA(), // Usamos la función getIVA()
-        totalConIva: total, // El total que ya incluye IVA
+        iva: getIVA(),
+        totalConIva: total,
+        usuario: {
+          nombre: usuario.displayName || usuario.email || "Desconocido",
+          uid: usuario.uid,
+        },
       };
 
       await registrarMovimiento(cajaAbierta.id, movimiento);
