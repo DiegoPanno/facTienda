@@ -536,10 +536,14 @@ const FacturadorPanel = () => {
 
       const resultado = response.data; // Usamos data directamente porque axios devuelve los datos como JSON.
 
-      if (resultado?.Resultado !== "A") {
-        throw new Error(
-          resultado?.Observaciones?.Obs?.[0]?.Msg || "Error al emitir factura"
-        );
+      console.log("Respuesta de AFIP:", resultado);
+
+      if (resultado?.Resultado === "A") {
+        // OK, seguimos
+      } else {
+        const mensajeError =
+          resultado?.Observaciones?.Obs?.[0]?.Msg || "Error al emitir factura";
+        throw new Error(mensajeError);
       }
 
       // Extraer información de la respuesta
