@@ -30,6 +30,11 @@ const FacturadorPanel = () => {
   const [success, setSuccess] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [caeInfo, setCaeInfo] = useState(null);
+  const [cliente, setCliente] = useState({
+    nombre: "",
+    dni: "",
+    tipoDoc: "96", // 96 es para DNI
+  });
 
   const getSubtotal = () => total / 1.21;
   const getIVA = () => total - getSubtotal();
@@ -112,6 +117,7 @@ const FacturadorPanel = () => {
         { ...producto, cantidad: 1, precioVenta: precio },
       ];
     });
+    setSearchTerm("");
   };
 
   // Manejar cambio de cantidad en el carrito
@@ -158,64 +164,64 @@ const FacturadorPanel = () => {
     }
   };
 
-const handleCobrar = async () => {
-  if (isSubmitting) return;
-  setIsSubmitting(true);
+  const handleCobrar = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
 
-  if (carrito.length === 0) {
-    setError("No hay productos en el carrito");
-    setIsSubmitting(false);
-    return;
-  }
+    if (carrito.length === 0) {
+      setError("No hay productos en el carrito");
+      setIsSubmitting(false);
+      return;
+    }
 
-  if (!cajaAbierta?.id) {
-    setError("No hay caja abierta. Abra caja primero.");
-    setIsSubmitting(false);
-    return;
-  }
+    if (!cajaAbierta?.id) {
+      setError("No hay caja abierta. Abra caja primero.");
+      setIsSubmitting(false);
+      return;
+    }
 
-  try {
-    setLoading(true);
-    setError(null);
+    try {
+      setLoading(true);
+      setError(null);
 
-    await generarPDF();
+      await generarPDF();
 
-    const movimiento = {
-      tipo: "ingreso",
-      monto: getSubtotal(),
-      descripcion: `Venta ${tipoDocumento || "Recibo"} ${
-        clienteSeleccionado?.nombre || "Consumidor Final"
-      }`,
-      formaPago: medioPago || "efectivo",
-      productos: carrito.map((item) => ({
-        id: item.id,
-        nombre: item.titulo,
-        cantidad: item.cantidad,
-        precio: item.precioVenta,
-        subtotal: item.precioVenta * item.cantidad,
-      })),
-      iva: getIVA(),
-      totalConIva: total,
-      usuario: {
-        nombre: "Administrador", // Nombre fijo
-        uid: "admin-001", // ID fijo
-      },
-    };
+      const movimiento = {
+        tipo: "ingreso",
+        monto: getSubtotal(),
+        descripcion: `Venta ${tipoDocumento || "Recibo"} ${
+          clienteSeleccionado?.nombre || "Consumidor Final"
+        }`,
+        formaPago: medioPago || "efectivo",
+        productos: carrito.map((item) => ({
+          id: item.id,
+          nombre: item.titulo,
+          cantidad: item.cantidad,
+          precio: item.precioVenta,
+          subtotal: item.precioVenta * item.cantidad,
+        })),
+        iva: getIVA(),
+        totalConIva: total,
+        usuario: {
+          nombre: "Administrador", // Nombre fijo
+          uid: "admin-001", // ID fijo
+        },
+      };
 
-    await registrarMovimiento(cajaAbierta.id, movimiento);
+      await registrarMovimiento(cajaAbierta.id, movimiento);
 
-    setCarrito([]);
-    setTotal(0);
-    setCobroRealizado(true);
-    setSuccess("✅ Venta registrada correctamente en caja");
-  } catch (error) {
-    console.error("Error al registrar cobro:", error);
-    setError(`❌ Error al registrar cobro: ${error.message}`);
-  } finally {
-    setLoading(false);
-    setIsSubmitting(false);
-  }
-};
+      setCarrito([]);
+      setTotal(0);
+      setCobroRealizado(true);
+      setSuccess("✅ Venta registrada correctamente en caja");
+    } catch (error) {
+      console.error("Error al registrar cobro:", error);
+      setError(`❌ Error al registrar cobro: ${error.message}`);
+    } finally {
+      setLoading(false);
+      setIsSubmitting(false);
+    }
+  };
 
   // Componente de vista previa del comprobante
   const VistaPreviaRecibo = ({
@@ -509,17 +515,24 @@ const handleCobrar = async () => {
   }
 
   // Función para enviar la factura a AFIP
-  // Función para enviar la factura a AFIP
-  async function handleEnviarAFIP() {
-    try {
-      if (tipoDocumento === "Factura C" && !clienteSeleccionado) {
-        throw new Error("Seleccione un cliente");
+async function handleEnviarAFIP() {
+  try {
+    // Verifica si el tipo de documento es Factura C y si no se ha seleccionado un cliente
+    if (tipoDocumento === "Factura C") {
+      // Si no hay cliente seleccionado, asigna un cliente por defecto (Consumidor Final)
+      let cliente = clienteSeleccionado ? { ...clienteSeleccionado } : { nombre: "Consumidor Final", cuit: "0" };
+
+      // Ahora cliente es una copia o un cliente predeterminado
+      if (cliente.cuit === "0") {
+        // No es necesario CUIT para Consumidor Final
+      } else if (!cliente.cuit) {
+        throw new Error("Seleccione un cliente o utilice CUIT 0 para Consumidor Final");
       }
 
-      // Datos del receptor
-      const receptor = prepararDatosReceptor(clienteSeleccionado);
+      // Preparar los datos del receptor
+      const receptor = prepararDatosReceptor(cliente);
 
-      // Productos
+      // Preparar los productos
       const items = carrito.map((prod, index) => ({
         codigo: prod.id || index + 1,
         descripcion: prod.titulo,
@@ -530,7 +543,7 @@ const handleCobrar = async () => {
 
       const total = items.reduce((acc, item) => acc + item.subtotal, 0);
 
-      // Datos antes de la adición de datosFactura
+      // Llamar a la API para emitir la factura
       const response = await api.post("/api/afip/emitir-factura-c", {
         cliente: receptor,
         importeTotal: total,
@@ -538,39 +551,38 @@ const handleCobrar = async () => {
         fecha: new Date().toISOString().slice(0, 10).replace(/-/g, ""), // Formato YYYYMMDD
       });
 
-      const resultado = response.data; // Usamos data directamente porque axios devuelve los datos como JSON.
+      const resultado = response.data; // No reasignes a constantes, solo obtén la data
 
       console.log("Respuesta de AFIP:", resultado);
 
       if (resultado?.Resultado === "A") {
-        // OK, seguimos
+        // Si la respuesta es positiva, continuamos con el flujo
       } else {
         const mensajeError =
           resultado?.Observaciones?.Obs?.[0]?.Msg || "Error al emitir factura";
         throw new Error(mensajeError);
       }
 
-      // Extraer información de la respuesta
-      const numeroFactura = resultado.numeroFactura || "0000-00000000";
-      const cae = resultado.cae || "Sin CAE";
-      const vencimientoCae = resultado.vencimientoCae || "No especificado";
-      const archivoPdf = resultado.archivoPdf || "";
-
+      // Actualizar el estado con la respuesta de la factura
       setCaeInfo({
-        cae,
-        vencimiento: vencimientoCae,
-        numeroFactura,
-        numero: numeroFactura.split("-")[1],
+        cae: resultado.cae || "Sin CAE",
+        vencimiento: resultado.vencimientoCae || "No especificado",
+        numeroFactura: resultado.numeroFactura || "0000-00000000",
+        numero: resultado.numeroFactura.split("-")[1],
         fecha: new Date().toLocaleDateString("es-AR"),
-        archivoPdf,
+        archivoPdf: resultado.archivoPdf || "",
       });
 
-      toast.success(`✅ Factura emitida. N°: ${numeroFactura} - CAE: ${cae}`);
-    } catch (error) {
-      console.error("Error en handleEnviarAFIP:", error);
-      toast.error(error.message || "Error al enviar factura a AFIP");
+      toast.success(`✅ Factura emitida. N°: ${resultado.numeroFactura} - CAE: ${resultado.cae}`);
     }
+  } catch (error) {
+    console.error("Error en handleEnviarAFIP:", error);
+    toast.error(error.message || "Error al enviar factura a AFIP");
   }
+}
+
+
+
 
   // Función auxiliar para validar CUIT
   const validarCUIT = (cuit) => {
@@ -657,17 +669,6 @@ const handleCobrar = async () => {
       toast.error("Error al generar la factura");
     }
   };
-
-  // Función auxiliar para formatear fecha
-  // function formatFecha(fechaStr) {
-  //   if (fechaStr.includes("/")) return fechaStr;
-  //   const [year, month, day] = [
-  //     fechaStr.substr(0, 4),
-  //     fechaStr.substr(4, 2),
-  //     fechaStr.substr(6, 2),
-  //   ];
-  //   return `${day}/${month}/${year}`;
-  // }
 
   return (
     <div
@@ -1129,7 +1130,10 @@ const handleCobrar = async () => {
                   !cajaAbierta ||
                   loading ||
                   !mostrarVistaPrevia ||
-                  (tipoDocumento === "Factura C" && !clienteSeleccionado)
+                  // Verificamos que la factura C se pueda emitir si el total es menor a 99999.99
+                  (tipoDocumento === "Factura C" &&
+                    !clienteSeleccionado &&
+                    total >= 99999.99) // Si no hay cliente y el total es mayor a 99.999, se deshabilita
                 }
                 style={{
                   padding: "12px 24px",
@@ -1138,7 +1142,9 @@ const handleCobrar = async () => {
                     cobroRealizado ||
                     !cajaAbierta ||
                     loading ||
-                    (tipoDocumento === "Factura C" && !clienteSeleccionado)
+                    (tipoDocumento === "Factura C" &&
+                      !clienteSeleccionado &&
+                      total >= 99999.99)
                       ? "#cccccc"
                       : tipoDocumento === "Factura C"
                       ? "#1976d2"
@@ -1151,7 +1157,9 @@ const handleCobrar = async () => {
                     cobroRealizado ||
                     !cajaAbierta ||
                     loading ||
-                    (tipoDocumento === "Factura C" && !clienteSeleccionado)
+                    (tipoDocumento === "Factura C" &&
+                      !clienteSeleccionado &&
+                      total >= 99999.99)
                       ? "not-allowed"
                       : "pointer",
                   fontWeight: "bold",
@@ -1163,6 +1171,7 @@ const handleCobrar = async () => {
                   ? "Emitir Factura C"
                   : "Enviar a AFIP"}
               </button>
+
               <button
                 onClick={handleGenerarFacturaPDF}
                 disabled={!caeInfo?.cae}
@@ -1228,56 +1237,6 @@ const handleCobrar = async () => {
               >
                 Descargar Factura
               </button>
-              {/* CAE y QR */}
-              {/* {caeInfo?.cae && (
-                <div
-                  style={{
-                    marginTop: "30px",
-                    paddingTop: "10px",
-                    borderTop: "1px solid #ccc",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
-                  <div>
-                    <p>
-                      <strong>CAE:</strong> {caeInfo.cae}
-                    </p>
-                    <p>
-                      <strong>Vto. CAE:</strong> {caeInfo.vencimiento}
-                    </p>
-                  </div>
-
-                  <div>
-                    <img
-                      src={`https://www.afip.gob.ar/fe/qr/?p=${btoa(
-                        JSON.stringify({
-                          ver: 1,
-                          fecha: new Date().toISOString().slice(0, 10),
-                          cuit: "20267036099",
-                          ptoVta: 3,
-                          tipoCmp: 11,
-                          nroCmp: caeInfo?.numeroFactura
-                            ? Number(caeInfo.numeroFactura.split("-")[1])
-                            : 0,
-                          importe: total,
-                          moneda: "PES",
-                          ctz: 1.0,
-                          tipoDocRec: clienteSeleccionado ? 80 : 99,
-                          nroDocRec: clienteSeleccionado?.cuit
-                            ? parseInt(clienteSeleccionado.cuit)
-                            : 0,
-                          tipoCodAut: "E",
-                          codAut: caeInfo.cae,
-                        })
-                      )}`}
-                      alt="QR AFIP"
-                      style={{ width: "100px", height: "100px" }}
-                    />
-                  </div>
-                </div>
-              )} */}
             </div>
           </div>
         )}

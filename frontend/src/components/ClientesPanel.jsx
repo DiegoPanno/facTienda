@@ -15,7 +15,6 @@ import {
 } from "@mui/material";
 
 const ClientesPanel = ({ onSelect, tipoDocumento }) => {
-  // Añade tipoDocumento como prop
   const [clientes, setClientes] = useState([]);
   const [nombreBusqueda, setNombreBusqueda] = useState("");
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
@@ -48,9 +47,8 @@ const ClientesPanel = ({ onSelect, tipoDocumento }) => {
       }`.toLowerCase();
       const cuit = (cliente.cuit || "").toString();
 
-      // Si es Factura C, solo mostrar clientes con CUIT válido
       if (tipoDocumento === "Factura C") {
-        const cuitValido = validarCUIT(cuit);
+        const cuitValido = cuit === "0" || validarCUIT(cuit);
         const coincideNombre = nombreBusqueda
           ? nombreCompleto.includes(nombreBusqueda.toLowerCase()) ||
             cuit.includes(nombreBusqueda)
@@ -59,7 +57,6 @@ const ClientesPanel = ({ onSelect, tipoDocumento }) => {
         return cuitValido && coincideNombre;
       }
 
-      // Para otros tipos de documento, mostrar todos los clientes que coincidan
       return nombreBusqueda
         ? nombreCompleto.includes(nombreBusqueda.toLowerCase()) ||
             cuit.includes(nombreBusqueda)
@@ -67,32 +64,35 @@ const ClientesPanel = ({ onSelect, tipoDocumento }) => {
     });
   };
 
-  // Reemplazar la función validarDocumento por esta versión mejorada
   const validarCUIT = (cuit) => {
     const doc = (cuit || "").toString().replace(/\D/g, "");
     return (
-      doc.length === 11 &&
-      ["20", "23", "24", "27", "30", "33", "34"].includes(doc.substr(0, 2))
+      doc === "0" ||
+      (doc.length === 11 &&
+        ["20", "23", "24", "27", "30", "33", "34"].includes(doc.substr(0, 2)))
     );
   };
 
 
+const handleSelectCliente = (cliente) => {
+  const doc = (cliente.cuit || "").toString().replace(/\D/g, "");
+  const largo = doc.length;
 
-  const handleSelectCliente = (cliente) => {
-    const doc = (cliente.cuit || "").toString().replace(/\D/g, "");
-    const largo = doc.length;
-  
-    const esValido = largo === 8 || largo === 11 || doc === "0";
-  
-    if (!esValido) {
-      setError("Documento inválido: debe tener 11 dígitos para CUIT, 8 para DNI o 0 para consumidor final");
-      return;
-    }
-  
+  const esValido = largo === 8 || largo === 11 || doc === "0";
+
+  if (!esValido) {
+    setError("Documento inválido: debe tener 11 dígitos para CUIT, 8 para DNI o 0 para consumidor final");
+    return;
+  }
+
+  if (onSelect) {
     onSelect({ ...cliente, cuit: doc });
-    setError(null);
-  };
-  
+  } else {
+    console.error("onSelect no está definido");
+  }
+  setError(null);
+};
+
   const handleNuevoCliente = () => {
     setClienteEdit(null);
     setMostrarFormulario(true);
@@ -150,7 +150,12 @@ const ClientesPanel = ({ onSelect, tipoDocumento }) => {
                 <List>
                   {resultadosFiltrados.map((cliente) => (
                     <ListItem
-                      key={cliente.id}
+                      key={
+                        cliente.id ||
+                        cliente.cuit ||
+                        cliente.dni ||
+                        `${Math.random()}`
+                      } // Generación de key único
                       disablePadding
                       onClick={() => handleSelectCliente(cliente)}
                       sx={{
@@ -158,9 +163,8 @@ const ClientesPanel = ({ onSelect, tipoDocumento }) => {
                         cursor: "pointer",
                         "&:hover": { backgroundColor: "action.hover" },
                         p: 2,
-                        // Resaltar clientes válidos para Factura C
                         ...(tipoDocumento === "Factura C" &&
-                          validarDocumento(cliente.cuit) && {
+                          validarCUIT(cliente.cuit) && {
                             borderLeft: "4px solid",
                             borderColor: "success.main",
                           }),
@@ -174,7 +178,7 @@ const ClientesPanel = ({ onSelect, tipoDocumento }) => {
                               CUIT: {cliente.cuit || "No especificado"}
                             </span>
                             {tipoDocumento === "Factura C" &&
-                              !validarDocumento(cliente.cuit) && (
+                              !validarCUIT(cliente.cuit) && (
                                 <span
                                   style={{ color: "red", marginLeft: "8px" }}
                                 >
@@ -198,7 +202,7 @@ const ClientesPanel = ({ onSelect, tipoDocumento }) => {
         <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
           <ClientesForm
             clienteEdit={clienteEdit}
-            tipoDocumento={tipoDocumento} // Pasar el tipoDocumento al formulario
+            tipoDocumento={tipoDocumento}
             onClienteCreado={(nuevoCliente) => {
               if (clienteEdit) {
                 setClientes((prev) =>

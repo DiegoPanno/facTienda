@@ -23,6 +23,7 @@ const ClientesForm = ({
     telefono: "",
     email: "",
   });
+  const [error, setError] = React.useState(null);
 
   // Inicializar valores si es edición
   React.useEffect(() => {
@@ -41,29 +42,45 @@ const ClientesForm = ({
   }, [clienteEdit, tipoDocumento]);
 
   const handleSubmit = (e) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    // Validación unificada para CUIT/DNI
-    const doc = values.cuit.replace(/\D/g, "");
-    if (![8, 11, 1].includes(doc.length)) {
+  let doc = values.cuit.replace(/\D/g, ""); // Limpiar no numéricos
+
+  if (tipoDocumento === "Factura C") {
+    if (doc.length === 0) {
+      // No se ingresó CUIT/DNI → usar DNI genérico
+      doc = "30111222";
+      values.nombre = values.nombre || "Consumidor Final";
+    } else if (doc.length !== 11) {
+      alert("El CUIT debe contener exactamente 11 dígitos.");
+      return;
+    }
+  } else {
+    if (![8, 1].includes(doc.length)) {
       alert(
-        "Debe ingresar 11 dígitos para CUIT, 8 para DNI o 0 para consumidor final"
+        "El DNI debe contener exactamente 8 dígitos o 0 para consumidor final."
       );
       return;
     }
-    // Preparar cliente para guardar
-    const clienteParaGuardar = {
-      ...values,
-      cuit: doc, // limpio y unificado
-    };
+  }
 
-    onClienteCreado(clienteParaGuardar);
+  const clienteParaGuardar = {
+    ...values,
+    cuit: doc,
   };
+
+  onClienteCreado(clienteParaGuardar);
+};
+
+
   return (
     <Paper elevation={3} sx={{ p: 3 }}>
       <Typography variant="h6" gutterBottom>
         {clienteEdit ? "Editar Cliente" : "Nuevo Cliente"}
       </Typography>
+
+      {/* Mostrar mensaje de error si existe */}
+      {error && <Alert severity="error">{error}</Alert>}
 
       <form onSubmit={handleSubmit}>
         <TextField
@@ -88,23 +105,17 @@ const ClientesForm = ({
             label="CUIT (Requerido)"
             value={values.cuit}
             onChange={(e) => {
-              const value = e.target.value;
-              // Formatear automáticamente como XX-XXXXXXXX-X
-              if (value.length <= 13) {
-                const cleanValue = value.replace(/\D/g, "");
-                let formatted = cleanValue;
-                if (cleanValue.length > 2) {
-                  formatted = `${cleanValue.substr(0, 2)}-${cleanValue.substr(
-                    2
-                  )}`;
-                }
-                if (cleanValue.length > 10) {
-                  formatted = `${formatted.substr(0, 11)}-${formatted.substr(
-                    11
-                  )}`;
-                }
-                setValues({ ...values, cuit: formatted });
+              const value = e.target.value.replace(/\D/g, ""); // Eliminar todos los no numéricos
+              let formatted = value;
+              if (value.length > 2) {
+                formatted = `${value.substr(0, 2)}-${value.substr(2)}`;
               }
+              if (value.length > 10) {
+                formatted = `${formatted.substr(0, 11)}-${formatted.substr(
+                  11
+                )}`;
+              }
+              setValues({ ...values, cuit: formatted });
             }}
             fullWidth
             margin="normal"
