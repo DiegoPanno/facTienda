@@ -1,16 +1,18 @@
 import { Link } from "react-router-dom";
-import { IoHomeSharp } from "react-icons/io5";
 import { FaCashRegister } from "react-icons/fa";
 import { FaShoppingCart } from "react-icons/fa";
 import { IoPersonSharp } from "react-icons/io5";
 import { BsCashCoin } from "react-icons/bs";
+import logo from "./img/logo tienda.png";
+import  Reloj from "./Reloj";
+
 
 
 const Navbar = () => {
   return (
       
     <div style={{
-      width: "80px",
+      width: "90px",
       height: "100vh",
       background: "#edeeec",
       color: '#020583',
@@ -22,9 +24,12 @@ const Navbar = () => {
       flexDirection: "column",
       boxSizing: "border-box"
     }}> 
-      <IoHomeSharp style={{ 
+
+      < Reloj />
+
+      <img src={logo} alt=""  style={{ 
         marginBottom: "200px",
-        fontSize: "33px",
+        fontSize: "50px"
          }} />
       
       <nav>
