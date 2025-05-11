@@ -39,26 +39,24 @@ const FacturadorPanel = () => {
   const getIVA = () => total - getSubtotal();
 
   const comprobanteRef = useRef(null);
-  
-
 
   // Verificar caja abierta al cargar el componente
-useEffect(() => {
-  const verificarCaja = async () => {
-    try {
-      const caja = await obtenerCajaAbierta();
-      setCajaAbierta(caja);
-      // Si necesitas el idCaja para algo, lo puedes establecer aquí
-      if (caja?.id) {
-        setIdCaja(caja.id); // Asumiendo que el id de la caja está en caja.id
+  useEffect(() => {
+    const verificarCaja = async () => {
+      try {
+        const caja = await obtenerCajaAbierta();
+        setCajaAbierta(caja);
+        // Si necesitas el idCaja para algo, lo puedes establecer aquí
+        if (caja?.id) {
+          setIdCaja(caja.id); // Asumiendo que el id de la caja está en caja.id
+        }
+      } catch (err) {
+        setError("Error al verificar estado de caja");
+        console.error(err);
       }
-    } catch (err) {
-      setError("Error al verificar estado de caja");
-      console.error(err);
-    }
-  };
-  verificarCaja();
-}, []);
+    };
+    verificarCaja();
+  }, []);
 
   useEffect(() => {
     const nuevoTotal = carrito.reduce(
@@ -543,20 +541,34 @@ useEffect(() => {
   );
 
   // Función para preparar los datos del receptor (cliente)
-  function prepararDatosReceptor(clienteSeleccionado) {
-    const doc = (clienteSeleccionado?.cuit || "0").replace(/\D/g, "");
-    const nombre = clienteSeleccionado?.nombre || "Consumidor Final";
+ function prepararDatosReceptor(clienteSeleccionado, totalFactura) {
+  const doc = (clienteSeleccionado?.cuit || clienteSeleccionado?.documento || "0").replace(/\D/g, "");
+  const nombre = clienteSeleccionado?.nombre || "Consumidor Final";
 
-    let tipoDocAfip = 99;
-    if (doc.length === 11) tipoDocAfip = 80; // CUIT
-    else if (doc.length === 8) tipoDocAfip = 96; // DNI
+  let tipoDocAfip = 99;
+  let nroDoc = 0;
 
-    return {
-      nombre,
-      tipoDoc: tipoDocAfip,
-      nroDoc: parseInt(doc || "0"),
-    };
+  if (doc.length === 11) {
+    tipoDocAfip = 80; // CUIT
+    nroDoc = parseInt(doc);
+  } else if (doc.length === 8) {
+    tipoDocAfip = 96; // DNI
+    nroDoc = parseInt(doc);
   }
+
+  // Si es consumidor final y monto es menor a $100.000, usar tipo 99
+  if (nombre.toUpperCase() === "CONSUMIDOR FINAL" && totalFactura < 99999.99) {
+    tipoDocAfip = 99;
+    nroDoc = 0;
+  }
+
+  return {
+    nombre,
+    tipoDoc: tipoDocAfip,
+    nroDoc,
+  };
+}
+
 
   // Función para enviar la factura a AFIP
   async function handleEnviarAFIP() {
@@ -578,7 +590,7 @@ useEffect(() => {
         }
 
         // Preparar los datos del receptor
-        const receptor = prepararDatosReceptor(cliente);
+        const receptor = prepararDatosReceptor(cliente,total);
 
         // Preparar los productos
         const items = carrito.map((prod, index) => ({
@@ -589,17 +601,18 @@ useEffect(() => {
           subtotal: prod.cantidad * prod.precioVenta,
         }));
 
-        const total = items.reduce((acc, item) => acc + item.subtotal, 0);
+        const totalCalculado = items.reduce((acc, item) => acc + item.subtotal, 0);
 
         // Llamar a la API para emitir la factura
         const response = await api.post("/api/afip/emitir-factura-c", {
           cliente: receptor,
-          importeTotal: total,
+          importeTotal: totalCalculado,
           importeNeto: getSubtotal(),
           fecha: new Date().toISOString().slice(0, 10).replace(/-/g, ""), // Formato YYYYMMDD
         });
 
         const resultado = response.data; // No reasignes a constantes, solo obtén la data
+        
 
         console.log("Respuesta de AFIP:", resultado);
 
@@ -628,7 +641,7 @@ useEffect(() => {
           cae: resultado.cae || "Sin CAE",
           vencimiento: resultado.vencimientoCae || "No especificado",
           numeroFactura: resultado.numeroFactura || "0000-00000000",
-          numero: resultado.numeroFactura.split("-")[1],
+          numero: resultado.numeroFactura?.split("-")[1] || "", // si necesitás solo el número
           fecha: new Date().toLocaleDateString("es-AR"),
           archivoPdf: resultado.archivoPdf || "",
         });
