@@ -1,17 +1,23 @@
 // ///frontend/src/services/cajaService.js
 // frontend/src/services/cajaService.js
 
-import { 
-  collection, addDoc, getDocs, query, where, 
-  orderBy, doc,  updateDoc, serverTimestamp, 
- increment, limit, 
-} from 'firebase/firestore';
-import { db } from '../firebase.js';
-import api from '../api'; 
-import crypto from 'crypto';
+import {
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  where,
+  orderBy,
+  doc,
+  updateDoc,
+  serverTimestamp,
+  increment,
+  limit,
+} from "firebase/firestore";
+import { db } from "../firebase.js";
+import api from "../api";
+import crypto from "crypto";
 //import { parseFirebaseTimestamp } from '../components/caja/utils/dateUtils';
-
-
 
 // ==============================================
 // FUNCIONES AUXILIARES
@@ -25,7 +31,7 @@ const registrarError = async (error, tipo, datosAdicionales = {}) => {
       stack: error.stack?.substring(0, 500),
       timestamp: serverTimestamp(),
       ...datosAdicionales,
-      entorno: process.env.NODE_ENV || 'development'
+      entorno: process.env.NODE_ENV || "development",
     });
   } catch (e) {
     console.error("Error registrando error:", e);
@@ -33,10 +39,11 @@ const registrarError = async (error, tipo, datosAdicionales = {}) => {
 };
 
 const generarHashSeguro = (dato) => {
-  return crypto.createHash('sha256')
-             .update(dato)
-             .digest('hex')
-             .substring(0, 16);
+  return crypto
+    .createHash("sha256")
+    .update(dato)
+    .digest("hex")
+    .substring(0, 16);
 };
 
 // ==============================================
@@ -44,34 +51,34 @@ const generarHashSeguro = (dato) => {
 // ==============================================
 
 export const abrirCaja = async (saldoInicial = 0) => {
-    try {
-      // Llamada directa al backend sin verificar estado AFIP
-      const response = await api.post('/api/afip/abrir-caja', { saldoInicial });
-      
-      // Crear caja en Firestore con la respuesta del backend
-      const nuevaCaja = {
-        fechaApertura: new Date(),
-        saldoInicial: parseFloat(saldoInicial),
-        saldoActual: parseFloat(saldoInicial),
-        abierta: true,
-        afipStatus: response.data.caja.afipStatus || 'inactivo'
-      };
-  
-      const docRef = await addDoc(collection(db, "caja"), nuevaCaja);
-      
-      return {
-        success: true,
-        id: docRef.id,
-        ...nuevaCaja
-      };
-    } catch (error) {
-      console.error("Error en abrirCaja:", error);
-      return {
-        success: false,
-        error: error.message
-      };
-    }
-  };
+  try {
+    // Llamada directa al backend sin verificar estado AFIP
+    const response = await api.post("/api/afip/abrir-caja", { saldoInicial });
+
+    // Crear caja en Firestore con la respuesta del backend
+    const nuevaCaja = {
+      fechaApertura: new Date(),
+      saldoInicial: parseFloat(saldoInicial),
+      saldoActual: parseFloat(saldoInicial),
+      abierta: true,
+      afipStatus: response.data.caja.afipStatus || "inactivo",
+    };
+
+    const docRef = await addDoc(collection(db, "caja"), nuevaCaja);
+
+    return {
+      success: true,
+      id: docRef.id,
+      ...nuevaCaja,
+    };
+  } catch (error) {
+    console.error("Error en abrirCaja:", error);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+};
 
 export const cerrarCaja = async (cajaId, { nombre, uid, saldoFinal }) => {
   try {
@@ -82,10 +89,10 @@ export const cerrarCaja = async (cajaId, { nombre, uid, saldoFinal }) => {
     const cajaRef = doc(db, "caja", cajaId);
     await updateDoc(cajaRef, {
       estado: "cerrada", // Asegúrate de tener este campo
-      abierta: false,    // Y/O este campo
+      abierta: false, // Y/O este campo
       fechaCierre: serverTimestamp(),
       saldoFinal: parseFloat(saldoFinal),
-      cerradoPor: { nombre, uid }
+      cerradoPor: { nombre, uid },
     });
 
     // 2. Registrar movimiento de cierre
@@ -95,7 +102,7 @@ export const cerrarCaja = async (cajaId, { nombre, uid, saldoFinal }) => {
       descripcion: "Cierre de caja",
       monto: 0,
       fecha: serverTimestamp(),
-      usuario: { nombre, uid }
+      usuario: { nombre, uid },
     });
 
     return { success: true };
@@ -107,18 +114,18 @@ export const cerrarCaja = async (cajaId, { nombre, uid, saldoFinal }) => {
 
 export const obtenerCajaAbierta = async () => {
   try {
-    const cajasRef = collection(db, "caja");
+    const cajasRef = collection(db, "caja"); // ⚠️ ojo, singular, no "cajas"
     const q = query(cajasRef, where("abierta", "==", true), limit(1));
     const querySnapshot = await getDocs(q);
 
     if (!querySnapshot.empty) {
       const doc = querySnapshot.docs[0];
       const data = doc.data();
-      
+
       return {
         id: doc.id,
         ...data,
-        fechaApertura: data.fechaApertura?.toDate?.() || new Date()
+        fechaApertura: data.fechaApertura?.toDate?.() || new Date(),
       };
     }
     return null;
@@ -128,10 +135,15 @@ export const obtenerCajaAbierta = async () => {
   }
 };
 
+
+
 export const registrarMovimiento = async (idCaja, movimiento) => {
   try {
     if (!idCaja) throw new Error("ID de caja no proporcionado");
-    if (!movimiento?.tipo || !['ingreso', 'egreso', 'sistema'].includes(movimiento.tipo)) {
+    if (
+      !movimiento?.tipo ||
+      !["ingreso", "egreso", "sistema"].includes(movimiento.tipo)
+    ) {
       throw new Error("Tipo de movimiento inválido");
     }
     if (isNaN(movimiento.monto)) throw new Error("Monto inválido");
@@ -141,15 +153,15 @@ export const registrarMovimiento = async (idCaja, movimiento) => {
       ...movimiento,
       usuario: movimiento.usuario || {
         nombre: "Sistema",
-        uid: "system-001"
-      }
+        uid: "system-001",
+      },
     };
 
     const movimientoRef = collection(db, "caja", idCaja, "movimientos");
     const docRef = await addDoc(movimientoRef, {
       ...movimientoConUsuario,
       monto: Number(movimiento.monto),
-      fecha: serverTimestamp()
+      fecha: serverTimestamp(),
     });
 
     const cajaRef = doc(db, "caja", idCaja);
@@ -157,26 +169,28 @@ export const registrarMovimiento = async (idCaja, movimiento) => {
     if (movimiento.tipo === "ingreso") {
       await updateDoc(cajaRef, {
         saldoActual: increment(movimiento.monto),
-        totalIngresado: increment(movimiento.monto)
+        totalIngresado: increment(movimiento.monto),
       });
     } else if (movimiento.tipo === "egreso") {
       await updateDoc(cajaRef, {
-        saldoActual: increment(-movimiento.monto)
+        saldoActual: increment(-movimiento.monto),
       });
     }
 
     return { success: true, id: docRef.id };
   } catch (error) {
-    await registrarError(error, 'error_registro_movimiento', { idCaja, movimiento });
+    await registrarError(error, "error_registro_movimiento", {
+      idCaja,
+      movimiento,
+    });
     console.error("Error al registrar movimiento:", error);
     throw error;
   }
 };
 
-
 export const obtenerCajaActiva = async () => {
-  const cajaRef = collection(db, 'caja'); // ✅ singular
-  const q = query(cajaRef, where('cerrada', '==', false));
+  const cajaRef = collection(db, "caja"); // ✅ singular
+  const q = query(cajaRef, where("cerrada", "==", false));
   const querySnapshot = await getDocs(q);
   if (!querySnapshot.empty) {
     const docData = querySnapshot.docs[0];
@@ -186,7 +200,7 @@ export const obtenerCajaActiva = async () => {
 };
 
 export const sumarIngresoACaja = async (cajaId, monto) => {
-  const cajaRef = doc(db, 'caja', cajaId); // ✅ singular
+  const cajaRef = doc(db, "caja", cajaId); // ✅ singular
   await updateDoc(cajaRef, {
     totalIngresado: increment(monto),
   });
@@ -199,19 +213,17 @@ export const obtenerMovimientosCaja = async (idCaja) => {
       orderBy("fecha", "desc")
     );
     const querySnapshot = await getDocs(q);
-    
-    return querySnapshot.docs.map(doc => ({
+
+    return querySnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
-      fecha: doc.data().fecha?.toDate?.() || new Date()
+      fecha: doc.data().fecha?.toDate?.() || new Date(),
     }));
   } catch (error) {
     console.error("Error obteniendo movimientos:", error);
     throw error;
   }
 };
-
-
 
 export default {
   abrirCaja,
@@ -222,16 +234,13 @@ export default {
   obtenerCajaAbierta,
 };
 
-
-
-
-// import { 
-//   collection, addDoc, getDocs, query, where, 
-//   orderBy, doc, setDoc, updateDoc, serverTimestamp, 
-//   writeBatch, increment, limit, getDoc 
+// import {
+//   collection, addDoc, getDocs, query, where,
+//   orderBy, doc, setDoc, updateDoc, serverTimestamp,
+//   writeBatch, increment, limit, getDoc
 // } from 'firebase/firestore';
 // import { db } from '../firebase.js';
-// import api from '../api'; 
+// import api from '../api';
 // import crypto from 'crypto';
 // import { parseFirebaseTimestamp } from '../components/caja/utils/dateUtils.js';
 
@@ -286,7 +295,7 @@ export default {
 //   try {
 //     // Llamada directa al backend sin verificar estado AFIP
 //     const response = await api.post('/api/afip/abrir-caja', { saldoInicial });
-    
+
 //     // Crear caja en Firestore con la respuesta del backend
 //     const nuevaCaja = {
 //       fechaApertura: new Date(),
@@ -297,7 +306,7 @@ export default {
 //     };
 
 //     const docRef = await addDoc(collection(db, "caja"), nuevaCaja);
-    
+
 //     return {
 //       success: true,
 //       id: docRef.id,
@@ -412,7 +421,7 @@ export default {
 //     if (!querySnapshot.empty) {
 //       const doc = querySnapshot.docs[0];
 //       const data = doc.data();
-      
+
 //       return {
 //         id: doc.id,
 //         ...data,
@@ -425,8 +434,6 @@ export default {
 //     throw error;
 //   }
 // };
-
-
 
 // export const registrarMovimiento = async (idCaja, movimiento) => {
 //   try {
@@ -501,32 +508,32 @@ export default {
 // // export const verificarCredencialesAFIP = async (idCaja) => {
 // //   try {
 // //     if (!idCaja) throw new Error("ID de caja no proporcionado");
-    
+
 // //     const cajaRef = doc(db, "caja", idCaja);
 // //     const cajaSnap = await getDoc(cajaRef);
-    
+
 // //     if (!cajaSnap.exists()) throw new Error("Caja no encontrada");
-    
+
 // //     const { configAFIP } = cajaSnap.data();
-    
+
 // //     if (!configAFIP?.token || !configAFIP?.sign) {
 // //       return { valido: false, motivo: "No hay credenciales AFIP registradas" };
 // //     }
-    
+
 // //     const ahora = new Date();
 // //     const vencimiento = new Date(configAFIP.vencimiento);
-    
+
 // //     if (vencimiento < ahora) {
-// //       return { 
-// //         valido: false, 
-// //         motivo: `Credenciales vencidas (vencieron el ${vencimiento.toLocaleString()})` 
+// //       return {
+// //         valido: false,
+// //         motivo: `Credenciales vencidas (vencieron el ${vencimiento.toLocaleString()})`
 // //       };
 // //     }
-    
+
 // //     // Verificación adicional probando el servicio
 // //     try {
 // //       const prueba = await AfipService.emitirFacturaTest();
-// //       return { 
+// //       return {
 // //         valido: true,
 // //         vencimiento: configAFIP.vencimiento,
 // //         puntoVenta: configAFIP.puntoVenta,
@@ -554,7 +561,6 @@ export default {
 // //     throw error;
 // //   }
 // // };
-
 
 // export default {
 //   abrirCaja,

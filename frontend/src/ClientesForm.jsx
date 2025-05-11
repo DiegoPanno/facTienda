@@ -25,7 +25,6 @@ const ClientesForm = ({
   });
   const [error, setError] = React.useState(null);
 
-  // Inicializar valores si es edición
   React.useEffect(() => {
     if (clienteEdit) {
       setValues({
@@ -42,36 +41,34 @@ const ClientesForm = ({
   }, [clienteEdit, tipoDocumento]);
 
   const handleSubmit = (e) => {
-  e.preventDefault();
+    e.preventDefault();
 
-  let doc = values.cuit.replace(/\D/g, ""); // Limpiar no numéricos
+    let doc = values.cuit.replace(/\D/g, "");
 
-  if (tipoDocumento === "Factura C") {
-    if (doc.length === 0) {
-      // No se ingresó CUIT/DNI → usar DNI genérico
-      doc = "30111222";
-      values.nombre = values.nombre || "Consumidor Final";
-    } else if (doc.length !== 11) {
-      alert("El CUIT debe contener exactamente 11 dígitos.");
-      return;
+    if (tipoDocumento === "Factura C") {
+      if (doc.length === 0) {
+        doc = "30111222";
+        values.nombre = values.nombre || "Consumidor Final";
+      } else if (doc.length !== 11) {
+        alert("El CUIT debe contener exactamente 11 dígitos.");
+        return;
+      }
+    } else {
+      if (![8, 1].includes(doc.length)) {
+        alert(
+          "El DNI debe contener exactamente 8 dígitos o 0 para consumidor final."
+        );
+        return;
+      }
     }
-  } else {
-    if (![8, 1].includes(doc.length)) {
-      alert(
-        "El DNI debe contener exactamente 8 dígitos o 0 para consumidor final."
-      );
-      return;
-    }
-  }
 
-  const clienteParaGuardar = {
-    ...values,
-    cuit: doc,
+    const clienteParaGuardar = {
+      ...values,
+      cuit: doc,
+    };
+
+    onClienteCreado(clienteParaGuardar);
   };
-
-  onClienteCreado(clienteParaGuardar);
-};
-
 
   return (
     <Paper elevation={3} sx={{ p: 3 }}>
@@ -79,7 +76,6 @@ const ClientesForm = ({
         {clienteEdit ? "Editar Cliente" : "Nuevo Cliente"}
       </Typography>
 
-      {/* Mostrar mensaje de error si existe */}
       {error && <Alert severity="error">{error}</Alert>}
 
       <form onSubmit={handleSubmit}>
@@ -105,7 +101,7 @@ const ClientesForm = ({
             label="CUIT (Requerido)"
             value={values.cuit}
             onChange={(e) => {
-              const value = e.target.value.replace(/\D/g, ""); // Eliminar todos los no numéricos
+              const value = e.target.value.replace(/\D/g, "");
               let formatted = value;
               if (value.length > 2) {
                 formatted = `${value.substr(0, 2)}-${value.substr(2)}`;
@@ -178,3 +174,5 @@ const ClientesForm = ({
 };
 
 export default ClientesForm;
+
+

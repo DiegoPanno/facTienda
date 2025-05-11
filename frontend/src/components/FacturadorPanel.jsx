@@ -11,7 +11,10 @@ import {
 import { toast } from "react-toastify";
 import { generarFacturaPDF } from "../services/pdfGenerator";
 import api from "../api";
-import { getAuth } from "firebase/auth";
+
+import { doc, getDoc, setDoc, increment } from "firebase/firestore";
+import { db } from "../firebase";
+import "./FacturadorPanel.css";
 
 const FacturadorPanel = () => {
   // Estados del componente
@@ -30,30 +33,32 @@ const FacturadorPanel = () => {
   const [success, setSuccess] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [caeInfo, setCaeInfo] = useState(null);
-  const [cliente, setCliente] = useState({
-    nombre: "",
-    dni: "",
-    tipoDoc: "96", // 96 es para DNI
-  });
+  const [idCaja, setIdCaja] = useState(null);
 
   const getSubtotal = () => total / 1.21;
   const getIVA = () => total - getSubtotal();
 
   const comprobanteRef = useRef(null);
+  
+
 
   // Verificar caja abierta al cargar el componente
-  useEffect(() => {
-    const verificarCaja = async () => {
-      try {
-        const caja = await obtenerCajaAbierta();
-        setCajaAbierta(caja);
-      } catch (err) {
-        setError("Error al verificar estado de caja");
-        console.error(err);
+useEffect(() => {
+  const verificarCaja = async () => {
+    try {
+      const caja = await obtenerCajaAbierta();
+      setCajaAbierta(caja);
+      // Si necesitas el idCaja para algo, lo puedes establecer aquí
+      if (caja?.id) {
+        setIdCaja(caja.id); // Asumiendo que el id de la caja está en caja.id
       }
-    };
-    verificarCaja();
-  }, []);
+    } catch (err) {
+      setError("Error al verificar estado de caja");
+      console.error(err);
+    }
+  };
+  verificarCaja();
+}, []);
 
   useEffect(() => {
     const nuevoTotal = carrito.reduce(
@@ -98,6 +103,17 @@ const FacturadorPanel = () => {
     );
     setTotal(nuevoTotal);
   }, [carrito]);
+
+  const obtenerProximoNumeroRemito = async () => {
+    const ref = doc(db, "config", "contadores");
+    const snap = await getDoc(ref);
+    let nro = 1;
+    if (snap.exists() && snap.data()?.ultimoRemito) {
+      nro = snap.data().ultimoRemito + 1;
+    }
+    await setDoc(ref, { ultimoRemito: nro }, { merge: true });
+    return nro;
+  };
 
   // Manejar agregar producto al carrito
   const handleAgregarCarrito = (producto) => {
@@ -186,9 +202,37 @@ const FacturadorPanel = () => {
 
       await generarPDF();
 
+      if (tipoDocumento === "Remito") {
+        const nroRemito = await obtenerProximoNumeroRemito(); // ✅ contador
+
+        const descripcion =
+          `Remito nro #${nroRemito}` +
+          (clienteSeleccionado?.nombre
+            ? ` - Cliente: ${clienteSeleccionado.nombre}`
+            : "");
+
+        await registrarMovimiento(cajaAbierta.id, {
+          tipo: "ingreso",
+          monto: total,
+          descripcion,
+          formaPago: medioPago || "efectivo",
+          fecha: new Date().toISOString(),
+          usuario: {
+            nombre: "Admin",
+            uid: "local",
+          },
+        });
+
+        setSuccess(`✅ Remito #${nroRemito} registrado correctamente`);
+        setCarrito([]);
+        setTotal(0);
+        setCobroRealizado(true);
+        return;
+      }
+
       const movimiento = {
         tipo: "ingreso",
-        monto: getSubtotal(),
+        monto: total,
         descripcion: `Venta ${tipoDocumento || "Recibo"} ${
           clienteSeleccionado?.nombre || "Consumidor Final"
         }`,
@@ -515,74 +559,89 @@ const FacturadorPanel = () => {
   }
 
   // Función para enviar la factura a AFIP
-async function handleEnviarAFIP() {
-  try {
-    // Verifica si el tipo de documento es Factura C y si no se ha seleccionado un cliente
-    if (tipoDocumento === "Factura C") {
-      // Si no hay cliente seleccionado, asigna un cliente por defecto (Consumidor Final)
-      let cliente = clienteSeleccionado ? { ...clienteSeleccionado } : { nombre: "Consumidor Final", cuit: "0" };
+  async function handleEnviarAFIP() {
+    try {
+      // Verifica si el tipo de documento es Factura C y si no se ha seleccionado un cliente
+      if (tipoDocumento === "Factura C") {
+        // Si no hay cliente seleccionado, asigna un cliente por defecto (Consumidor Final)
+        let cliente = clienteSeleccionado
+          ? { ...clienteSeleccionado }
+          : { nombre: "Consumidor Final", cuit: "0" };
 
-      // Ahora cliente es una copia o un cliente predeterminado
-      if (cliente.cuit === "0") {
-        // No es necesario CUIT para Consumidor Final
-      } else if (!cliente.cuit) {
-        throw new Error("Seleccione un cliente o utilice CUIT 0 para Consumidor Final");
+        // Ahora cliente es una copia o un cliente predeterminado
+        if (cliente.cuit === "0") {
+          // No es necesario CUIT para Consumidor Final
+        } else if (!cliente.cuit) {
+          throw new Error(
+            "Seleccione un cliente o utilice CUIT 0 para Consumidor Final"
+          );
+        }
+
+        // Preparar los datos del receptor
+        const receptor = prepararDatosReceptor(cliente);
+
+        // Preparar los productos
+        const items = carrito.map((prod, index) => ({
+          codigo: prod.id || index + 1,
+          descripcion: prod.titulo,
+          cantidad: prod.cantidad,
+          precioUnitario: prod.precioVenta,
+          subtotal: prod.cantidad * prod.precioVenta,
+        }));
+
+        const total = items.reduce((acc, item) => acc + item.subtotal, 0);
+
+        // Llamar a la API para emitir la factura
+        const response = await api.post("/api/afip/emitir-factura-c", {
+          cliente: receptor,
+          importeTotal: total,
+          importeNeto: getSubtotal(),
+          fecha: new Date().toISOString().slice(0, 10).replace(/-/g, ""), // Formato YYYYMMDD
+        });
+
+        const resultado = response.data; // No reasignes a constantes, solo obtén la data
+
+        console.log("Respuesta de AFIP:", resultado);
+
+        if (resultado?.Resultado === "A") {
+          await registrarMovimiento(idCaja, {
+            tipo: "ingreso",
+            monto: total, // Este ya incluye IVA en Factura C
+            descripcion: `Pago de factura ${resultado.numeroFactura}`,
+            formaPago: "efectivo", // Podés reemplazar con tarjeta, etc. si tenés ese dato
+            fecha: new Date().toISOString(),
+            usuario: {
+              nombre: "Admin",
+              uid: "local",
+            },
+          });
+          // Si la respuesta es positiva, continuamos con el flujo
+        } else {
+          const mensajeError =
+            resultado?.Observaciones?.Obs?.[0]?.Msg ||
+            "Error al emitir factura";
+          throw new Error(mensajeError);
+        }
+
+        // Actualizar el estado con la respuesta de la factura
+        setCaeInfo({
+          cae: resultado.cae || "Sin CAE",
+          vencimiento: resultado.vencimientoCae || "No especificado",
+          numeroFactura: resultado.numeroFactura || "0000-00000000",
+          numero: resultado.numeroFactura.split("-")[1],
+          fecha: new Date().toLocaleDateString("es-AR"),
+          archivoPdf: resultado.archivoPdf || "",
+        });
+
+        toast.success(
+          `✅ Factura emitida. N°: ${resultado.numeroFactura} - CAE: ${resultado.cae}`
+        );
       }
-
-      // Preparar los datos del receptor
-      const receptor = prepararDatosReceptor(cliente);
-
-      // Preparar los productos
-      const items = carrito.map((prod, index) => ({
-        codigo: prod.id || index + 1,
-        descripcion: prod.titulo,
-        cantidad: prod.cantidad,
-        precioUnitario: prod.precioVenta,
-        subtotal: prod.cantidad * prod.precioVenta,
-      }));
-
-      const total = items.reduce((acc, item) => acc + item.subtotal, 0);
-
-      // Llamar a la API para emitir la factura
-      const response = await api.post("/api/afip/emitir-factura-c", {
-        cliente: receptor,
-        importeTotal: total,
-        importeNeto: getSubtotal(),
-        fecha: new Date().toISOString().slice(0, 10).replace(/-/g, ""), // Formato YYYYMMDD
-      });
-
-      const resultado = response.data; // No reasignes a constantes, solo obtén la data
-
-      console.log("Respuesta de AFIP:", resultado);
-
-      if (resultado?.Resultado === "A") {
-        // Si la respuesta es positiva, continuamos con el flujo
-      } else {
-        const mensajeError =
-          resultado?.Observaciones?.Obs?.[0]?.Msg || "Error al emitir factura";
-        throw new Error(mensajeError);
-      }
-
-      // Actualizar el estado con la respuesta de la factura
-      setCaeInfo({
-        cae: resultado.cae || "Sin CAE",
-        vencimiento: resultado.vencimientoCae || "No especificado",
-        numeroFactura: resultado.numeroFactura || "0000-00000000",
-        numero: resultado.numeroFactura.split("-")[1],
-        fecha: new Date().toLocaleDateString("es-AR"),
-        archivoPdf: resultado.archivoPdf || "",
-      });
-
-      toast.success(`✅ Factura emitida. N°: ${resultado.numeroFactura} - CAE: ${resultado.cae}`);
+    } catch (error) {
+      console.error("Error en handleEnviarAFIP:", error);
+      toast.error(error.message || "Error al enviar factura a AFIP");
     }
-  } catch (error) {
-    console.error("Error en handleEnviarAFIP:", error);
-    toast.error(error.message || "Error al enviar factura a AFIP");
   }
-}
-
-
-
 
   // Función auxiliar para validar CUIT
   const validarCUIT = (cuit) => {
@@ -673,573 +732,597 @@ async function handleEnviarAFIP() {
   return (
     <div
       style={{
-        minHeight: "100vh", // Ocupa toda la altura visible
+        Height: "95vh", // Ocupa toda la altura visible
         width: "95vw", // Ocupa todo el ancho visible
         margin: "0 auto",
         padding: "20px",
-        display: "grid",
-        gridTemplateColumns: "2fr 3fr", // Más espacio para el carrito
         gap: "2rem",
         fontFamily: "Arial, sans-serif",
+        backgroundColor: "#dedfdd",
       }}
+      className="parent"
     >
-      {/* Columna izquierda - Productos y búsqueda */}
-      <div>
-        <h2
-          style={{
-            marginBottom: "1.5rem",
-            color: "#333",
-            borderBottom: "2px solid #4caf50",
-            paddingBottom: "10px",
-          }}
-        >
-          Facturación
-        </h2>
+      <div className="div1"></div>
 
-        {/* Estado de caja */}
-        {cajaAbierta ? (
-          <div
-            style={{
-              padding: "10px",
-              marginBottom: "1rem",
-              backgroundColor: "#e8f5e9",
-              borderRadius: "4px",
-              border: "1px solid #c8e6c9",
-            }}
-          >
-            <strong>Caja abierta:</strong> Saldo actual: $
-            {cajaAbierta.saldoActual?.toFixed(2)}
-          </div>
-        ) : (
-          <div
-            style={{
-              padding: "10px",
-              marginBottom: "1rem",
-              backgroundColor: "#ffebee",
-              borderRadius: "4px",
-              border: "1px solid #ef9a9a",
-            }}
-          >
-            <strong>Caja cerrada:</strong> No se pueden registrar ventas
-          </div>
-        )}
+      <div className="div2">
+        <div className="div5">
+          {/* Columna izquierda - Productos y búsqueda */}
+          <div>
+            <h2
+              style={{
+                marginBottom: "1.5rem",
+                marginLeft: "4%",
+                color: "#020583",
+                borderBottom: "2px solid #4caf50",
+                paddingBottom: "10px",
+              }}
+            >
+              Facturación
+            </h2>
 
-        {/* Mostrar mensajes de error/success */}
-        {error && (
-          <div
-            style={{
-              padding: "10px",
-              marginBottom: "1rem",
-              backgroundColor: "#ffebee",
-              borderRadius: "4px",
-              border: "1px solid #ef9a9a",
-              color: "#c62828",
-            }}
-          >
-            {error}
-          </div>
-        )}
-        {success && (
-          <div
-            style={{
-              padding: "10px",
-              marginBottom: "1rem",
-              backgroundColor: "#e8f5e9",
-              borderRadius: "4px",
-              border: "1px solid #c8e6c9",
-              color: "#2e7d32",
-            }}
-          >
-            {success}
-          </div>
-        )}
+            {/* Estado de caja */}
+            {cajaAbierta ? (
+              <div
+                style={{
+                  padding: "10px",
+                  marginBottom: "1rem",
+                  backgroundColor: "#e8f5e9",
+                  borderRadius: "4px",
+                  border: "1px solid #c8e6c9",
+                }}
+              >
+                <strong>Caja abierta:</strong> Saldo actual: $
+                {cajaAbierta.saldoActual?.toFixed(2)}
+              </div>
+            ) : (
+              <div
+                style={{
+                  padding: "10px",
+                  marginBottom: "1rem",
+                  backgroundColor: "#ffebee",
+                  borderRadius: "4px",
+                  border: "1px solid #ef9a9a",
+                }}
+              >
+                <strong>Caja cerrada:</strong> No se pueden registrar ventas
+              </div>
+            )}
 
-        {/* Buscador de productos */}
-        <div style={{ marginBottom: "1.5rem" }}>
-          <input
-            type="text"
-            placeholder="Buscar producto por nombre o código..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "12px",
-              border: "1px solid #ddd",
-              borderRadius: "4px",
-              fontSize: "1rem",
-              boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-            }}
-          />
+            {/* Mostrar mensajes de error/success */}
+            {error && (
+              <div
+                style={{
+                  padding: "10px",
+                  marginBottom: "1rem",
+                  backgroundColor: "#ffebee",
+                  borderRadius: "4px",
+                  border: "1px solid #ef9a9a",
+                  color: "#c62828",
+                }}
+              >
+                {error}
+              </div>
+            )}
+            {success && (
+              <div
+                style={{
+                  padding: "10px",
+                  marginBottom: "1rem",
+                  backgroundColor: "#e8f5e9",
+                  borderRadius: "4px",
+                  border: "1px solid #c8e6c9",
+                  color: "#2e7d32",
+                }}
+              >
+                {success}
+              </div>
+            )}
+
+            {/* Buscador de productos */}
+            <div style={{ marginBottom: "1.5rem" }}>
+              <input
+                type="text"
+                placeholder="Buscar producto por nombre o código..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{
+                  width: "95%",
+                  padding: "12px",
+                  border: "1px solid #ddd",
+                  borderRadius: "4px",
+                  fontSize: "1rem",
+                  boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+                }}
+              />
+            </div>
+
+            {/* Listado de productos filtrados */}
+            {searchTerm && (
+              <div
+                style={{
+                  border: "1px solid #ddd",
+                  borderRadius: "8px",
+                  backgroundColor: "#fff",
+                  overflow: "hidden",
+                  marginBottom: "1.5rem",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                }}
+              >
+                {productosFiltrados.length === 0 ? (
+                  <div
+                    style={{
+                      padding: "20px",
+                      textAlign: "center",
+                      color: "#666",
+                      backgroundColor: "#f9f9f9",
+                    }}
+                  >
+                    No se encontraron productos
+                  </div>
+                ) : (
+                  <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                    {productosFiltrados.map((prod) => (
+                      <li
+                        key={prod.id}
+                        style={{
+                          padding: "15px",
+                          borderBottom: "1px solid #eee",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          transition: "background-color 0.2s",
+                          ":hover": { backgroundColor: "#f9f9f9" },
+                        }}
+                      >
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: "bold" }}>
+                            {prod.titulo}
+                          </div>
+                          <div
+                            style={{
+                              color: "#666",
+                              fontSize: "0.9rem",
+                              display: "flex",
+                              gap: "10px",
+                              marginTop: "5px",
+                            }}
+                          >
+                            <span>Código: {prod.id}</span>
+                            <span>|</span>
+                            <span>Stock: {prod.stock || 0}</span>
+                          </div>
+                        </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "10px",
+                          }}
+                        >
+                          <span style={{ fontWeight: "bold" }}>
+                            ${prod.precioVenta.toFixed(2)}
+                          </span>
+                          <button
+                            onClick={() => handleAgregarCarrito(prod)}
+                            style={{
+                              padding: "8px 12px",
+                              backgroundColor: "#4caf50",
+                              color: "white",
+                              border: "none",
+                              borderRadius: "4px",
+                              cursor: "pointer",
+                              fontWeight: "bold",
+                              transition: "background-color 0.2s",
+                              ":hover": { backgroundColor: "#3e8e41" },
+                            }}
+                          >
+                            Agregar
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="div4">
+            {/* Panel de clientes */}
+            <div style={{ marginBottom: "1.5rem" }}>
+              <ClientesPanel
+                tipoDocumento={tipoDocumento}
+                onSelect={(cliente) => {
+                  if (tipoDocumento === "Factura C") {
+                    if (!cliente.cuit) {
+                      setError(
+                        "Para Factura C debe seleccionar un cliente con CUIT válido"
+                      );
+                      return;
+                    }
+
+                    if (!validarCUIT(cliente.cuit)) {
+                      setError(
+                        `El CUIT ${cliente.cuit} no es válido para Factura C`
+                      );
+                      return;
+                    }
+                  }
+
+                  setClienteSeleccionado(cliente);
+                  setError(null);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="div3">
+        <div className="div6">
+          {/* Carrito de compras */}
+          <div style={{ marginBottom: "1.5rem" }}>
+            <Carrito
+              carrito={carrito}
+              handleActualizarCantidad={handleActualizarCantidad}
+              handleActualizarPrecio={handleActualizarPrecio}
+              handleEliminarProducto={handleEliminarProducto}
+            />
+          </div>
         </div>
 
-        {/* Listado de productos filtrados */}
-        {searchTerm && (
+        <div className="div7">
+          {/* Resumen y opciones */}
           <div
             style={{
+              padding: "20px",
               border: "1px solid #ddd",
               borderRadius: "8px",
               backgroundColor: "#fff",
-              overflow: "hidden",
               marginBottom: "1.5rem",
               boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
             }}
           >
-            {productosFiltrados.length === 0 ? (
-              <div
-                style={{
-                  padding: "20px",
-                  textAlign: "center",
-                  color: "#666",
-                  backgroundColor: "#f9f9f9",
-                }}
-              >
-                No se encontraron productos
-              </div>
-            ) : (
-              <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-                {productosFiltrados.map((prod) => (
-                  <li
-                    key={prod.id}
-                    style={{
-                      padding: "15px",
-                      borderBottom: "1px solid #eee",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      transition: "background-color 0.2s",
-                      ":hover": { backgroundColor: "#f9f9f9" },
-                    }}
-                  >
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: "bold" }}>{prod.titulo}</div>
-                      <div
-                        style={{
-                          color: "#666",
-                          fontSize: "0.9rem",
-                          display: "flex",
-                          gap: "10px",
-                          marginTop: "5px",
-                        }}
-                      >
-                        <span>Código: {prod.id}</span>
-                        <span>|</span>
-                        <span>Stock: {prod.stock || 0}</span>
-                      </div>
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "10px",
-                      }}
-                    >
-                      <span style={{ fontWeight: "bold" }}>
-                        ${prod.precioVenta.toFixed(2)}
-                      </span>
-                      <button
-                        onClick={() => handleAgregarCarrito(prod)}
-                        style={{
-                          padding: "8px 12px",
-                          backgroundColor: "#4caf50",
-                          color: "white",
-                          border: "none",
-                          borderRadius: "4px",
-                          cursor: "pointer",
-                          fontWeight: "bold",
-                          transition: "background-color 0.2s",
-                          ":hover": { backgroundColor: "#3e8e41" },
-                        }}
-                      >
-                        Agregar
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
-        {/* Panel de clientes */}
-        <div style={{ marginBottom: "1.5rem" }}>
-          <ClientesPanel
-            tipoDocumento={tipoDocumento}
-            onSelect={(cliente) => {
-              if (tipoDocumento === "Factura C") {
-                if (!cliente.cuit) {
-                  setError(
-                    "Para Factura C debe seleccionar un cliente con CUIT válido"
-                  );
-                  return;
-                }
-
-                if (!validarCUIT(cliente.cuit)) {
-                  setError(
-                    `El CUIT ${cliente.cuit} no es válido para Factura C`
-                  );
-                  return;
-                }
-              }
-
-              setClienteSeleccionado(cliente);
-              setError(null);
-            }}
-          />
-        </div>
-      </div>
-
-      {/* Columna derecha - Carrito y opciones */}
-      <div>
-        {/* Carrito de compras */}
-        <div style={{ marginBottom: "1.5rem" }}>
-          <Carrito
-            carrito={carrito}
-            handleActualizarCantidad={handleActualizarCantidad}
-            handleActualizarPrecio={handleActualizarPrecio}
-            handleEliminarProducto={handleEliminarProducto}
-          />
-        </div>
-
-        {/* Resumen y opciones */}
-        <div
-          style={{
-            padding: "20px",
-            border: "1px solid #ddd",
-            borderRadius: "8px",
-            backgroundColor: "#fff",
-            marginBottom: "1.5rem",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-          }}
-        >
-          <h3
-            style={{
-              marginBottom: "1rem",
-              paddingBottom: "10px",
-              borderBottom: "1px solid #eee",
-            }}
-          >
-            Resumen
-          </h3>
-
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: "10px 0",
-              borderBottom: "1px solid #eee",
-            }}
-          >
-            <span style={{ fontWeight: "bold" }}>Subtotal:</span>
-            <span>${getSubtotal().toFixed(2)}</span>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: "10px 0",
-              borderBottom: "1px solid #eee",
-            }}
-          >
-            <span style={{ fontWeight: "bold" }}>IVA (21%):</span>
-            <span>${getIVA().toFixed(2)}</span>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: "10px 0",
-              marginTop: "10px",
-            }}
-          >
-            <span style={{ fontSize: "1.2rem", fontWeight: "bold" }}>
-              Total:
-            </span>
-            <span style={{ fontSize: "1.2rem", fontWeight: "bold" }}>
-              ${total.toFixed(2)}
-            </span>
-          </div>
-        </div>
-
-        {/* Opciones de documento */}
-        <div
-          style={{
-            padding: "20px",
-            border: "1px solid #ddd",
-            borderRadius: "8px",
-            backgroundColor: "#fff",
-            marginBottom: "1.5rem",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-          }}
-        >
-          <h3
-            style={{
-              marginBottom: "1rem",
-              paddingBottom: "10px",
-              borderBottom: "1px solid #eee",
-            }}
-          >
-            Configuración del Documento
-          </h3>
-
-          <div style={{ marginBottom: "1rem" }}>
-            <label
+            <h2
               style={{
-                display: "block",
-                marginBottom: "0.5rem",
-                fontWeight: "bold",
+                marginBottom: "1rem",
+                paddingBottom: "10px",
+                borderBottom: "1px solid #eee",
               }}
             >
-              Tipo de documento
-            </label>
-            <select
-              value={tipoDocumento}
-              onChange={(e) => setTipoDocumento(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "10px",
-                border: "1px solid #ddd",
-                borderRadius: "4px",
-                fontSize: "1rem",
-                backgroundColor: "#fff",
-              }}
-            >
-              <option value="">Seleccionar tipo</option>
-              {/*<option value="Factura A">Factura A</option>*/}
-              <option value="Factura C">Factura C</option>
-              <option value="Recibo">Recibo</option>
-              <option value="Nota de Crédito C">Nota de Crédito C</option>
-            </select>
-          </div>
-
-          <div>
-            <label
-              style={{
-                display: "block",
-                marginBottom: "0.5rem",
-                fontWeight: "bold",
-              }}
-            >
-              Medio de pago
-            </label>
-            <select
-              value={medioPago}
-              onChange={(e) => setMedioPago(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "10px",
-                border: "1px solid #ddd",
-                borderRadius: "4px",
-                fontSize: "1rem",
-                backgroundColor: "#fff",
-              }}
-            >
-              <option value="">Seleccionar medio</option>
-              <option value="Efectivo">Efectivo</option>
-              <option value="Tarjeta de Crédito">Tarjeta de Crédito</option>
-              <option value="Tarjeta de Débito">Tarjeta de Débito</option>
-              <option value="Transferencia Bancaria">
-                Transferencia Bancaria
-              </option>
-              <option value="Mercado Pago">Mercado Pago</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Botones de acción */}
-        <div style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem" }}>
-          <button
-            onClick={() => setMostrarVistaPrevia(!mostrarVistaPrevia)}
-            disabled={carrito.length === 0}
-            style={{
-              flex: 1,
-              padding: "12px",
-              backgroundColor: carrito.length === 0 ? "#cccccc" : "#2196f3",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: carrito.length === 0 ? "not-allowed" : "pointer",
-              fontWeight: "bold",
-              fontSize: "1rem",
-              transition: "background-color 0.2s",
-              ":hover": {
-                backgroundColor: carrito.length === 0 ? "#cccccc" : "#0b7dda",
-              },
-            }}
-          >
-            {mostrarVistaPrevia ? "Ocultar Vista" : "Vista Previa"}
-          </button>
-
-          <button
-            onClick={() => {
-              setCarrito([]);
-              setClienteSeleccionado(null);
-            }}
-            disabled={carrito.length === 0}
-            style={{
-              padding: "12px",
-              backgroundColor: carrito.length === 0 ? "#cccccc" : "#f44336",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: carrito.length === 0 ? "not-allowed" : "pointer",
-              fontWeight: "bold",
-              fontSize: "1rem",
-              transition: "background-color 0.2s",
-              ":hover": {
-                backgroundColor: carrito.length === 0 ? "#cccccc" : "#d32f2f",
-              },
-            }}
-          >
-            Limpiar Todo
-          </button>
-        </div>
-
-        {/* Vista previa y generación de PDF */}
-        {mostrarVistaPrevia && carrito.length > 0 && (
-          <div style={{ marginTop: "1.5rem" }}>
-            <VistaPreviaRecibo
-              total={total}
-              subtotal={getSubtotal()}
-              iva={getIVA()}
-              carrito={carrito}
-              tipoDocumento={tipoDocumento}
-              medioPago={medioPago}
-              clienteSeleccionado={clienteSeleccionado}
-              caeInfo={caeInfo}
-            />
+              Resumen
+            </h2>
 
             <div
               style={{
                 display: "flex",
-                justifyContent: "flex-end",
-                gap: "1rem",
-                marginTop: "1rem",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "10px 0",
+                borderBottom: "1px solid #eee",
               }}
             >
-              {/* Botón Enviar a AFIP (NUEVO) */}
-              <button
-                onClick={handleEnviarAFIP}
-                disabled={
-                  carrito.length === 0 ||
-                  cobroRealizado ||
-                  !cajaAbierta ||
-                  loading ||
-                  !mostrarVistaPrevia ||
-                  // Verificamos que la factura C se pueda emitir si el total es menor a 99999.99
-                  (tipoDocumento === "Factura C" &&
-                    !clienteSeleccionado &&
-                    total >= 99999.99) // Si no hay cliente y el total es mayor a 99.999, se deshabilita
-                }
-                style={{
-                  padding: "12px 24px",
-                  backgroundColor:
-                    carrito.length === 0 ||
-                    cobroRealizado ||
-                    !cajaAbierta ||
-                    loading ||
-                    (tipoDocumento === "Factura C" &&
-                      !clienteSeleccionado &&
-                      total >= 99999.99)
-                      ? "#cccccc"
-                      : tipoDocumento === "Factura C"
-                      ? "#1976d2"
-                      : "#2196F3",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
-                  cursor:
-                    carrito.length === 0 ||
-                    cobroRealizado ||
-                    !cajaAbierta ||
-                    loading ||
-                    (tipoDocumento === "Factura C" &&
-                      !clienteSeleccionado &&
-                      total >= 99999.99)
-                      ? "not-allowed"
-                      : "pointer",
-                  fontWeight: "bold",
-                }}
-              >
-                {loading
-                  ? "Enviando..."
-                  : tipoDocumento === "Factura C"
-                  ? "Emitir Factura C"
-                  : "Enviar a AFIP"}
-              </button>
+              <span style={{ fontWeight: "bold" }}>Subtotal:</span>
+              <span>${getSubtotal().toFixed(2)}</span>
+            </div>
 
-              <button
-                onClick={handleGenerarFacturaPDF}
-                disabled={!caeInfo?.cae}
-                style={{
-                  padding: "12px 24px",
-                  backgroundColor: !caeInfo?.cae ? "#cccccc" : "#ff9800",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
-                  cursor: !caeInfo?.cae ? "not-allowed" : "pointer",
-                  fontWeight: "bold",
-                  marginLeft: "1rem",
-                }}
-              >
-                Descargar Factura
-              </button>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "10px 0",
+                borderBottom: "1px solid #eee",
+              }}
+            >
+              <span style={{ fontWeight: "bold" }}>IVA (21%):</span>
+              <span>${getIVA().toFixed(2)}</span>
+            </div>
 
-              {/* Botón Registrar Cobro (EXISTENTE) */}
-              <button
-                onClick={handleCobrar}
-                disabled={
-                  carrito.length === 0 ||
-                  cobroRealizado ||
-                  !cajaAbierta ||
-                  loading
-                }
-                style={{
-                  padding: "12px 24px",
-                  backgroundColor:
-                    carrito.length === 0 || cobroRealizado || !cajaAbierta
-                      ? "#cccccc"
-                      : "#4caf50",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
-                  cursor:
-                    carrito.length === 0 || cobroRealizado || !cajaAbierta
-                      ? "not-allowed"
-                      : "pointer",
-                  fontWeight: "bold",
-                }}
-              >
-                {loading
-                  ? "Procesando..."
-                  : cobroRealizado
-                  ? "Cobrado"
-                  : "Registrar Cobro"}
-              </button>
-
-              {/* Botón Generar PDF (EXISTENTE) */}
-              <button
-                onClick={handleGenerarFacturaPDF}
-                disabled={!caeInfo?.cae}
-                style={{
-                  padding: "12px 24px",
-                  backgroundColor: !caeInfo?.cae ? "#cccccc" : "#ff9800",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
-                  cursor: !caeInfo?.cae ? "not-allowed" : "pointer",
-                  fontWeight: "bold",
-                }}
-              >
-                Descargar Factura
-              </button>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "10px 0",
+                marginTop: "10px",
+              }}
+            >
+              <span style={{ fontSize: "2rem", fontWeight: "bold" }}>
+                Total:
+              </span>
+              <span style={{ fontSize: "2rem", fontWeight: "bold" }}>
+                ${total.toFixed(2)}
+              </span>
             </div>
           </div>
-        )}
+
+          {/* Opciones de documento */}
+          <div
+            style={{
+              padding: "20px",
+              border: "1px solid #ddd",
+              borderRadius: "8px",
+              backgroundColor: "#fff",
+              marginBottom: "1.5rem",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+            }}
+          >
+            <h2
+              style={{
+                marginBottom: "1rem",
+                paddingBottom: "10px",
+                borderBottom: "1px solid #eee",
+              }}
+            >
+              Configuración del Documento
+            </h2>
+
+            <div style={{ marginBottom: "1rem" }}>
+              <label
+                style={{
+                  display: "block",
+                  marginBottom: "0.5rem",
+                  fontWeight: "bold",
+                }}
+              >
+                Tipo de documento
+              </label>
+              <select
+                value={tipoDocumento}
+                onChange={(e) => setTipoDocumento(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  border: "1px solid #ddd",
+                  borderRadius: "4px",
+                  fontSize: "1rem",
+                  backgroundColor: "#fff",
+                }}
+              >
+                <option value="">Seleccionar tipo</option>
+                {/*<option value="Factura A">Factura A</option>*/}
+                <option value="Factura C">Factura C</option>
+                <option value="Remito">Remito</option>
+                <option value="Recibo">Recibo</option>
+                <option value="Nota de Crédito C">Nota de Crédito C</option>
+              </select>
+            </div>
+
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  marginBottom: "0.5rem",
+                  fontWeight: "bold",
+                }}
+              >
+                Medio de pago
+              </label>
+              <select
+                value={medioPago}
+                onChange={(e) => setMedioPago(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  border: "1px solid #ddd",
+                  borderRadius: "4px",
+                  fontSize: "1rem",
+                  backgroundColor: "#fff",
+                }}
+              >
+                <option value="">Seleccionar medio</option>
+                <option value="Efectivo">Efectivo</option>
+                <option value="Tarjeta de Crédito">Tarjeta de Crédito</option>
+                <option value="Tarjeta de Débito">Tarjeta de Débito</option>
+                <option value="Transferencia Bancaria">
+                  Transferencia Bancaria
+                </option>
+                <option value="Mercado Pago">Mercado Pago</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="div8">
+          {/* Columna derecha - Carrito y opciones */}
+          <div>
+            {/* Botones de acción */}
+            <div
+              style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem" }}
+            >
+              <button
+                onClick={() => setMostrarVistaPrevia(!mostrarVistaPrevia)}
+                disabled={carrito.length === 0}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  backgroundColor: carrito.length === 0 ? "#cccccc" : "#2196f3",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: carrito.length === 0 ? "not-allowed" : "pointer",
+                  fontWeight: "bold",
+                  fontSize: "1rem",
+                  transition: "background-color 0.2s",
+                  ":hover": {
+                    backgroundColor:
+                      carrito.length === 0 ? "#cccccc" : "#0b7dda",
+                  },
+                }}
+              >
+                {mostrarVistaPrevia ? "Ocultar Vista" : "Vista Previa"}
+              </button>
+
+              <button
+                onClick={() => {
+                  setCarrito([]);
+                  setClienteSeleccionado(null);
+                }}
+                disabled={carrito.length === 0}
+                style={{
+                  padding: "12px",
+                  backgroundColor: carrito.length === 0 ? "#cccccc" : "#f44336",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: carrito.length === 0 ? "not-allowed" : "pointer",
+                  fontWeight: "bold",
+                  fontSize: "1rem",
+                  transition: "background-color 0.2s",
+                  ":hover": {
+                    backgroundColor:
+                      carrito.length === 0 ? "#cccccc" : "#d32f2f",
+                  },
+                }}
+              >
+                Limpiar Todo
+              </button>
+            </div>
+
+            {/* Vista previa y generación de PDF */}
+            {mostrarVistaPrevia && carrito.length > 0 && (
+              <div style={{ marginTop: "1.5rem" }}>
+                <VistaPreviaRecibo
+                  total={total}
+                  subtotal={getSubtotal()}
+                  iva={getIVA()}
+                  carrito={carrito}
+                  tipoDocumento={tipoDocumento}
+                  medioPago={medioPago}
+                  clienteSeleccionado={clienteSeleccionado}
+                  caeInfo={caeInfo}
+                />
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: "1rem",
+                    marginTop: "1rem",
+                  }}
+                >
+                  {/* Botón Enviar a AFIP (NUEVO) */}
+                  <button
+                    onClick={handleEnviarAFIP}
+                    disabled={
+                      carrito.length === 0 ||
+                      cobroRealizado ||
+                      !cajaAbierta ||
+                      loading ||
+                      !mostrarVistaPrevia ||
+                      // Verificamos que la factura C se pueda emitir si el total es menor a 99999.99
+                      (tipoDocumento === "Factura C" &&
+                        !clienteSeleccionado &&
+                        total >= 99999.99) // Si no hay cliente y el total es mayor a 99.999, se deshabilita
+                    }
+                    style={{
+                      padding: "12px 24px",
+                      backgroundColor:
+                        carrito.length === 0 ||
+                        cobroRealizado ||
+                        !cajaAbierta ||
+                        loading ||
+                        (tipoDocumento === "Factura C" &&
+                          !clienteSeleccionado &&
+                          total >= 99999.99)
+                          ? "#cccccc"
+                          : tipoDocumento === "Factura C"
+                          ? "#1976d2"
+                          : "#2196F3",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "4px",
+                      cursor:
+                        carrito.length === 0 ||
+                        cobroRealizado ||
+                        !cajaAbierta ||
+                        loading ||
+                        (tipoDocumento === "Factura C" &&
+                          !clienteSeleccionado &&
+                          total >= 99999.99)
+                          ? "not-allowed"
+                          : "pointer",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {loading
+                      ? "Enviando..."
+                      : tipoDocumento === "Factura C"
+                      ? "Emitir Factura C"
+                      : "Enviar a AFIP"}
+                  </button>
+
+                  <button
+                    onClick={handleGenerarFacturaPDF}
+                    disabled={!caeInfo?.cae}
+                    style={{
+                      padding: "12px 24px",
+                      backgroundColor: !caeInfo?.cae ? "#cccccc" : "#ff9800",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "4px",
+                      cursor: !caeInfo?.cae ? "not-allowed" : "pointer",
+                      fontWeight: "bold",
+                      marginLeft: "1rem",
+                    }}
+                  >
+                    Descargar Factura
+                  </button>
+
+                  {/* Botón Registrar Cobro (EXISTENTE) */}
+                  <button
+                    onClick={handleCobrar}
+                    disabled={
+                      carrito.length === 0 ||
+                      cobroRealizado ||
+                      !cajaAbierta ||
+                      loading
+                    }
+                    style={{
+                      padding: "12px 24px",
+                      backgroundColor:
+                        carrito.length === 0 || cobroRealizado || !cajaAbierta
+                          ? "#cccccc"
+                          : "#4caf50",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "4px",
+                      cursor:
+                        carrito.length === 0 || cobroRealizado || !cajaAbierta
+                          ? "not-allowed"
+                          : "pointer",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {loading
+                      ? "Procesando..."
+                      : cobroRealizado
+                      ? "Cobrado"
+                      : "Registrar Cobro"}
+                  </button>
+
+                  {/* Botón Generar PDF (EXISTENTE) */}
+                  <button
+                    onClick={handleGenerarFacturaPDF}
+                    disabled={!caeInfo?.cae}
+                    style={{
+                      padding: "12px 24px",
+                      backgroundColor: !caeInfo?.cae ? "#cccccc" : "#ff9800",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "4px",
+                      cursor: !caeInfo?.cae ? "not-allowed" : "pointer",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Descargar Factura
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -236,7 +236,7 @@ const ProductoForm = ({
   const precioVenta = calcularPrecioVenta(producto.precioBase, producto.margen);
 
   return (
-    <div style={{ maxWidth: "600px", margin: "0 auto" }}>
+    <div style={{ maxWidth: "600px", marginLeft: "150px" }}>
       <h2>{productoEdit ? "Editar Producto" : "Agregar Nuevo Producto"}</h2>
       
       <BuscadorProductos 

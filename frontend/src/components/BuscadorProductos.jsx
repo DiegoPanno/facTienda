@@ -25,7 +25,7 @@ const BuscadorProductos = ({ onSeleccionar }) => {
     : [];
 
   return (
-    <div style={{ marginBottom: "1rem" }}>
+    <div style={{ marginBottom: "1rem", width: "580px" }}>
       <input
         ref={inputRef}
         type="text"

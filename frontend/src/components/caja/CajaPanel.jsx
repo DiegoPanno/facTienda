@@ -56,6 +56,8 @@ const CajaPanel = () => {
         });
 
         const cajaAbierta = await obtenerCajaAbierta();
+        
+
 
         if (cajaAbierta) {
           setCaja({
@@ -189,7 +191,7 @@ const CajaPanel = () => {
   };
 
   return (
-    <Box sx={{ p: 3, maxWidth: 1200, margin: "0 auto" }}>
+    <Box sx={{ p: 3, maxWidth: 1200, margin: "0 auto", ml: "200px"}}>
       <Typography
         variant="h4"
         gutterBottom

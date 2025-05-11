@@ -31,14 +31,14 @@ const Carrito = ({
       boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
       marginBottom: '20px'
     }}>
-      <h3 style={{
+      <h2 style={{
         marginTop: 0,
         marginBottom: '20px',
         paddingBottom: '10px',
         borderBottom: '1px solid #eee',
-        fontSize: '1.5rem',
-        color: '#333'
-      }}>Carrito de Compras</h3>
+        fontSize: '2rem',
+        color: '#020583'
+      }}>Carrito de Compras</h2>
       
       {carrito.length === 0 ? (
         <div style={{ 

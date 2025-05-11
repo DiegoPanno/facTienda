@@ -1,5 +1,9 @@
 import { useState, useEffect } from "react";
-import { collection, getDocs } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  addDoc
+} from "firebase/firestore";
 import { db } from "../firebase";
 import ClientesForm from "../ClientesForm";
 import {
@@ -13,6 +17,7 @@ import {
   List,
   Alert,
 } from "@mui/material";
+import "./FacturadorPanel.css";
 
 const ClientesPanel = ({ onSelect, tipoDocumento }) => {
   const [clientes, setClientes] = useState([]);
@@ -73,25 +78,21 @@ const ClientesPanel = ({ onSelect, tipoDocumento }) => {
     );
   };
 
+  const handleSelectCliente = (cliente) => {
+    const doc = (cliente.cuit || "").toString().replace(/\D/g, "");
+    const largo = doc.length;
+    const esValido = largo === 8 || largo === 11 || doc === "0";
 
-const handleSelectCliente = (cliente) => {
-  const doc = (cliente.cuit || "").toString().replace(/\D/g, "");
-  const largo = doc.length;
+    if (!esValido) {
+      setError("Documento inválido: debe tener 11 dígitos para CUIT, 8 para DNI o 0 para consumidor final");
+      return;
+    }
 
-  const esValido = largo === 8 || largo === 11 || doc === "0";
-
-  if (!esValido) {
-    setError("Documento inválido: debe tener 11 dígitos para CUIT, 8 para DNI o 0 para consumidor final");
-    return;
-  }
-
-  if (onSelect) {
-    onSelect({ ...cliente, cuit: doc });
-  } else {
-    console.error("onSelect no está definido");
-  }
-  setError(null);
-};
+    if (onSelect) {
+      onSelect({ ...cliente, cuit: doc });
+    }
+    setError(null);
+  };
 
   const handleNuevoCliente = () => {
     setClienteEdit(null);
@@ -102,8 +103,8 @@ const handleSelectCliente = (cliente) => {
   const resultadosFiltrados = buscarCliente();
 
   return (
-    <Box sx={{ maxWidth: "600px", margin: "0 auto", p: 2 }}>
-      <Typography variant="h5" gutterBottom>
+    <Box sx={{ maxWidth: "500px", margin: "0 auto", p: 2 }}>
+      <Typography variant="h5"  gutterBottom>
         Clientes
         {tipoDocumento === "Factura C" && (
           <Typography variant="caption" display="block" color="text.secondary">
@@ -131,7 +132,7 @@ const handleSelectCliente = (cliente) => {
 
           <TextField
             label="CUIT o DNI (sin guiones)"
-            value={nombreBusqueda} // Cambiar de values.documento a nombreBusqueda
+            value={nombreBusqueda}
             onChange={(e) => setNombreBusqueda(e.target.value)}
             fullWidth
             margin="normal"
@@ -141,21 +142,14 @@ const handleSelectCliente = (cliente) => {
           {nombreBusqueda && (
             <Paper elevation={3} sx={{ mb: 2 }}>
               {resultadosFiltrados.length === 0 ? (
-                <Box
-                  sx={{ p: 2, textAlign: "center", color: "text.secondary" }}
-                >
+                <Box sx={{ p: 2, textAlign: "center", color: "text.secondary" }}>
                   No se encontraron resultados.
                 </Box>
               ) : (
                 <List>
                   {resultadosFiltrados.map((cliente) => (
                     <ListItem
-                      key={
-                        cliente.id ||
-                        cliente.cuit ||
-                        cliente.dni ||
-                        `${Math.random()}`
-                      } // Generación de key único
+                      key={cliente.id || cliente.cuit || Math.random()}
                       disablePadding
                       onClick={() => handleSelectCliente(cliente)}
                       sx={{
@@ -174,14 +168,10 @@ const handleSelectCliente = (cliente) => {
                         primary={`${cliente.nombre} ${cliente.apellido}`}
                         secondary={
                           <>
-                            <span>
-                              CUIT: {cliente.cuit || "No especificado"}
-                            </span>
+                            <span>CUIT: {cliente.cuit || "No especificado"}</span>
                             {tipoDocumento === "Factura C" &&
                               !validarCUIT(cliente.cuit) && (
-                                <span
-                                  style={{ color: "red", marginLeft: "8px" }}
-                                >
+                                <span style={{ color: "red", marginLeft: "8px" }}>
                                   (No válido para Factura C)
                                 </span>
                               )}
@@ -203,16 +193,16 @@ const handleSelectCliente = (cliente) => {
           <ClientesForm
             clienteEdit={clienteEdit}
             tipoDocumento={tipoDocumento}
-            onClienteCreado={(nuevoCliente) => {
-              if (clienteEdit) {
-                setClientes((prev) =>
-                  prev.map((c) => (c.id === nuevoCliente.id ? nuevoCliente : c))
-                );
-              } else {
-                setClientes((prev) => [...prev, nuevoCliente]);
+            onClienteCreado={async (nuevoCliente) => {
+              try {
+                const docRef = await addDoc(collection(db, "clientes"), nuevoCliente);
+                setClientes((prev) => [...prev, { ...nuevoCliente, id: docRef.id }]);
+                setClienteEdit(null);
+                setMostrarFormulario(false);
+              } catch (error) {
+                console.error("Error al guardar cliente:", error);
+                setError("No se pudo guardar el cliente.");
               }
-              setClienteEdit(null);
-              setMostrarFormulario(false);
             }}
             onCancel={() => {
               setClienteEdit(null);
