@@ -650,10 +650,17 @@ const FacturadorPanel = () => {
         );
       }
     } catch (error) {
-      console.error("Error en handleEnviarAFIP:", error);
-      toast.error(error.message || "Error al enviar factura a AFIP");
-    }
+  console.error("Error en handleEnviarAFIP:", error);
+
+  if (error.code === "ECONNABORTED") {
+    toast.error("❌ Tiempo de espera agotado. AFIP no respondió a tiempo.");
+  } else if (error.response?.status === 500) {
+    toast.error("❌ Error interno del servidor al emitir la factura.");
+  } else {
+    toast.error(error.message || "❌ Error al enviar factura a AFIP");
   }
+}
+}
 
   // Función auxiliar para validar CUIT
   const validarCUIT = (cuit) => {
