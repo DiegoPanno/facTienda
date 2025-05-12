@@ -1103,7 +1103,7 @@ const FacturadorPanel = () => {
                 {/*<option value="Factura A">Factura A</option>*/}
                 <option value="Factura C">Factura C</option>
                 <option value="Remito">Remito</option>
-                <option value="Recibo">Recibo</option>
+                <option value="Recibo C">Recibo</option>
                 <option value="Nota de Crédito C">Nota de Crédito C</option>
               </select>
             </div>
@@ -1286,7 +1286,7 @@ const FacturadorPanel = () => {
                       marginLeft: "1rem",
                     }}
                   >
-                    Descargar Factura
+                    Descargar Factura C
                   </button>
 
                   {/* Botón Registrar Cobro (EXISTENTE) */}
@@ -1318,7 +1318,7 @@ const FacturadorPanel = () => {
                       ? "Procesando..."
                       : cobroRealizado
                       ? "Cobrado"
-                      : "Registrar Cobro"}
+                      : "Registrar Remito"}
                   </button>
 
                   {/* Botón Generar PDF (EXISTENTE) */}
