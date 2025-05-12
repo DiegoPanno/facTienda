@@ -146,7 +146,6 @@ export const registrarMovimiento = async (idCaja, movimiento) => {
     }
     if (isNaN(movimiento.monto)) throw new Error("Monto inválido");
 
-    // Usuario por defecto si no se proporciona
     const movimientoConUsuario = {
       ...movimiento,
       usuario: movimiento.usuario || {
@@ -155,15 +154,22 @@ export const registrarMovimiento = async (idCaja, movimiento) => {
       },
     };
 
-    const movimientoRef = collection(db, "caja", idCaja, "movimientos");
-    const docRef = await addDoc(movimientoRef, {
+    const fechaFinal = movimiento.fecha
+      ? new Date(movimiento.fecha)
+      : serverTimestamp();
+
+    const datosCompletos = {
       ...movimientoConUsuario,
       monto: Number(movimiento.monto),
-      fecha: movimiento.fecha ? new Date(movimiento.fecha) : serverTimestamp(),
-    });
+      fecha: fechaFinal,
+    };
 
+    // 1. Guardar en subcolección movimientos de la caja
+    const movimientoRef = collection(db, "caja", idCaja, "movimientos");
+    const docRef = await addDoc(movimientoRef, datosCompletos);
+
+    // 2. Actualizar saldo en caja
     const cajaRef = doc(db, "caja", idCaja);
-
     if (movimiento.tipo === "ingreso") {
       await updateDoc(cajaRef, {
         saldoActual: increment(movimiento.monto),
@@ -172,6 +178,24 @@ export const registrarMovimiento = async (idCaja, movimiento) => {
     } else if (movimiento.tipo === "egreso") {
       await updateDoc(cajaRef, {
         saldoActual: increment(-movimiento.monto),
+      });
+    }
+
+    // 3. Guardar en movimientosCaja
+    await addDoc(collection(db, "movimientosCaja"), {
+      ...datosCompletos,
+      idCaja,
+    });
+
+    // 4. Guardar en movimientosVenta si tiene productos
+    if (
+      movimiento.tipo === "ingreso" &&
+      movimiento.productos &&
+      movimiento.productos.length > 0
+    ) {
+      await addDoc(collection(db, "movimientosVenta"), {
+        ...datosCompletos,
+        idCaja,
       });
     }
 
@@ -185,6 +209,9 @@ export const registrarMovimiento = async (idCaja, movimiento) => {
     throw error;
   }
 };
+
+
+
 
 export const obtenerCajaActiva = async () => {
   const cajaRef = collection(db, "caja"); // ✅ singular
