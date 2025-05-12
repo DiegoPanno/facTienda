@@ -15,7 +15,7 @@ import api from "../api";
 import { doc, getDoc, setDoc, increment } from "firebase/firestore";
 import { db } from "../firebase";
 
-import "./FacturadorPanel.css"
+import "./FacturadorPanel.css";
 
 const FacturadorPanel = () => {
   // Estados del componente
@@ -542,58 +542,57 @@ const FacturadorPanel = () => {
   );
 
   // Función para preparar los datos del receptor (cliente)
- function prepararDatosReceptor(clienteSeleccionado, totalFactura) {
-  const doc = (clienteSeleccionado?.cuit || clienteSeleccionado?.documento || "0").replace(/\D/g, "");
-  const nombre = clienteSeleccionado?.nombre || "Consumidor Final";
+  function prepararDatosReceptor(clienteSeleccionado, totalFactura) {
+    const doc = (
+      clienteSeleccionado?.cuit ||
+      clienteSeleccionado?.documento ||
+      "0"
+    ).replace(/\D/g, "");
+    const nombre = clienteSeleccionado?.nombre || "Consumidor Final";
 
-  let tipoDocAfip = 99;
-  let nroDoc = 0;
+    let tipoDocAfip = 99;
+    let nroDoc = 0;
 
-  if (doc.length === 11) {
-    tipoDocAfip = 80; // CUIT
-    nroDoc = parseInt(doc);
-  } else if (doc.length === 8) {
-    tipoDocAfip = 96; // DNI
-    nroDoc = parseInt(doc);
+    if (doc.length === 11) {
+      tipoDocAfip = 80; // CUIT
+      nroDoc = parseInt(doc);
+    } else if (doc.length === 8) {
+      tipoDocAfip = 96; // DNI
+      nroDoc = parseInt(doc);
+    }
+
+    // Si es consumidor final y monto es menor a $100.000, usar tipo 99
+    if (
+      nombre.toUpperCase() === "CONSUMIDOR FINAL" &&
+      totalFactura < 99999.99
+    ) {
+      tipoDocAfip = 99;
+      nroDoc = 0;
+    }
+
+    return {
+      nombre,
+      tipoDoc: tipoDocAfip,
+      nroDoc,
+    };
   }
-
-  // Si es consumidor final y monto es menor a $100.000, usar tipo 99
-  if (nombre.toUpperCase() === "CONSUMIDOR FINAL" && totalFactura < 99999.99) {
-    tipoDocAfip = 99;
-    nroDoc = 0;
-  }
-
-  return {
-    nombre,
-    tipoDoc: tipoDocAfip,
-    nroDoc,
-  };
-}
-
 
   // Función para enviar la factura a AFIP
   async function handleEnviarAFIP() {
     try {
-      // Verifica si el tipo de documento es Factura C y si no se ha seleccionado un cliente
       if (tipoDocumento === "Factura C") {
-        // Si no hay cliente seleccionado, asigna un cliente por defecto (Consumidor Final)
         let cliente = clienteSeleccionado
           ? { ...clienteSeleccionado }
           : { nombre: "Consumidor Final", cuit: "0" };
 
-        // Ahora cliente es una copia o un cliente predeterminado
-        if (cliente.cuit === "0") {
-          // No es necesario CUIT para Consumidor Final
-        } else if (!cliente.cuit) {
+        if (cliente.cuit !== "0" && !cliente.cuit) {
           throw new Error(
             "Seleccione un cliente o utilice CUIT 0 para Consumidor Final"
           );
         }
 
-        // Preparar los datos del receptor
-        const receptor = prepararDatosReceptor(cliente,total);
+        const receptor = prepararDatosReceptor(cliente, total);
 
-        // Preparar los productos
         const items = carrito.map((prod, index) => ({
           codigo: prod.id || index + 1,
           descripcion: prod.titulo,
@@ -602,34 +601,34 @@ const FacturadorPanel = () => {
           subtotal: prod.cantidad * prod.precioVenta,
         }));
 
-        const totalCalculado = items.reduce((acc, item) => acc + item.subtotal, 0);
+        const totalCalculado = parseFloat(
+          items.reduce((acc, item) => acc + item.subtotal, 0).toFixed(2)
+        );
+        const subtotalCalculado = parseFloat(getSubtotal().toFixed(2));
 
-        // Llamar a la API para emitir la factura
         const response = await api.post("/api/afip/emitir-factura-c", {
           cliente: receptor,
           importeTotal: totalCalculado,
-          importeNeto: getSubtotal(),
-          fecha: new Date().toISOString().slice(0, 10).replace(/-/g, ""), // Formato YYYYMMDD
+          importeNeto: subtotalCalculado,
+          fecha: new Date().toISOString().slice(0, 10).replace(/-/g, ""),
         });
 
-        const resultado = response.data; // No reasignes a constantes, solo obtén la data
-        
+        const resultado = response.data;
 
         console.log("Respuesta de AFIP:", resultado);
 
         if (resultado?.Resultado === "A") {
           await registrarMovimiento(idCaja, {
             tipo: "ingreso",
-            monto: total, // Este ya incluye IVA en Factura C
+            monto: total,
             descripcion: `Pago de factura ${resultado.numeroFactura}`,
-            formaPago: "efectivo", // Podés reemplazar con tarjeta, etc. si tenés ese dato
+            formaPago: "efectivo",
             fecha: new Date().toISOString(),
             usuario: {
               nombre: "Admin",
               uid: "local",
             },
           });
-          // Si la respuesta es positiva, continuamos con el flujo
         } else {
           const mensajeError =
             resultado?.Observaciones?.Obs?.[0]?.Msg ||
@@ -637,12 +636,11 @@ const FacturadorPanel = () => {
           throw new Error(mensajeError);
         }
 
-        // Actualizar el estado con la respuesta de la factura
         setCaeInfo({
           cae: resultado.cae || "Sin CAE",
           vencimiento: resultado.vencimientoCae || "No especificado",
           numeroFactura: resultado.numeroFactura || "0000-00000000",
-          numero: resultado.numeroFactura?.split("-")[1] || "", // si necesitás solo el número
+          numero: resultado.numeroFactura?.split("-")[1] || "",
           fecha: new Date().toLocaleDateString("es-AR"),
           archivoPdf: resultado.archivoPdf || "",
         });
@@ -942,34 +940,34 @@ const FacturadorPanel = () => {
           </div>
         </div>
         <div className="div4">
-            {/* Panel de clientes */}
-            <div >
-              <ClientesPanel 
-                variant="facturador"
-                tipoDocumento={tipoDocumento}
-                onSelect={(cliente) => {
-                  if (tipoDocumento === "Factura C") {
-                    if (!cliente.cuit) {
-                      setError(
-                        "Para Factura C debe seleccionar un cliente con CUIT válido"
-                      );
-                      return;
-                    }
-
-                    if (!validarCUIT(cliente.cuit)) {
-                      setError(
-                        `El CUIT ${cliente.cuit} no es válido para Factura C`
-                      );
-                      return;
-                    }
+          {/* Panel de clientes */}
+          <div>
+            <ClientesPanel
+              variant="facturador"
+              tipoDocumento={tipoDocumento}
+              onSelect={(cliente) => {
+                if (tipoDocumento === "Factura C") {
+                  if (!cliente.cuit) {
+                    setError(
+                      "Para Factura C debe seleccionar un cliente con CUIT válido"
+                    );
+                    return;
                   }
 
-                  setClienteSeleccionado(cliente);
-                  setError(null);
-                }}
-              />
-            </div>
+                  if (!validarCUIT(cliente.cuit)) {
+                    setError(
+                      `El CUIT ${cliente.cuit} no es válido para Factura C`
+                    );
+                    return;
+                  }
+                }
+
+                setClienteSeleccionado(cliente);
+                setError(null);
+              }}
+            />
           </div>
+        </div>
       </div>
 
       <div className="div3">
