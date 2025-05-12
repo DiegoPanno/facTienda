@@ -14,7 +14,8 @@ import api from "../api";
 
 import { doc, getDoc, setDoc, increment } from "firebase/firestore";
 import { db } from "../firebase";
-import "./FacturadorPanel.css";
+
+import "./FacturadorPanel.css"
 
 const FacturadorPanel = () => {
   // Estados del componente
@@ -939,11 +940,12 @@ const FacturadorPanel = () => {
               </div>
             )}
           </div>
-
-          <div className="div4">
+        </div>
+        <div className="div4">
             {/* Panel de clientes */}
-            <div style={{ marginBottom: "1.5rem" }}>
-              <ClientesPanel
+            <div >
+              <ClientesPanel 
+                variant="facturador"
                 tipoDocumento={tipoDocumento}
                 onSelect={(cliente) => {
                   if (tipoDocumento === "Factura C") {
@@ -968,7 +970,6 @@ const FacturadorPanel = () => {
               />
             </div>
           </div>
-        </div>
       </div>
 
       <div className="div3">

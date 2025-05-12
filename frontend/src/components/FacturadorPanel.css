@@ -40,6 +40,8 @@
    width: 95%;
    justify-items: center;
    align-items: center;
+   margin-left: 0;
+   
 }
 
 .div5 {
@@ -65,5 +67,5 @@
 
 h2 {
     font-size: 2rem;
-    color: #020583;
+    color: #0d0e4e;
 }

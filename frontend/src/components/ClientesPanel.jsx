@@ -17,9 +17,9 @@ import {
   List,
   Alert,
 } from "@mui/material";
-import "./FacturadorPanel.css";
+import styles from "./ClientesPanel.module.css";
 
-const ClientesPanel = ({ onSelect, tipoDocumento }) => {
+const ClientesPanel = ({ onSelect, tipoDocumento, variant = "clientes" }) => {
   const [clientes, setClientes] = useState([]);
   const [nombreBusqueda, setNombreBusqueda] = useState("");
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
@@ -103,15 +103,15 @@ const ClientesPanel = ({ onSelect, tipoDocumento }) => {
   const resultadosFiltrados = buscarCliente();
 
   return (
-    <Box sx={{ maxWidth: "500px", margin: "0 auto", p: 2 }}>
-      <Typography variant="h5"  gutterBottom>
-        Clientes
+  
+    <Box className={variant === "facturador" ? styles.containerFacturador : styles.containerClientes}>
+        <h2 className={variant === "clientes" ? styles.titleSmall : styles.titleLarge}>Clientes</h2>
         {tipoDocumento === "Factura C" && (
           <Typography variant="caption" display="block" color="text.secondary">
             * Para Factura C seleccione cliente con CUIT válido
           </Typography>
         )}
-      </Typography>
+      
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>

@@ -1,0 +1,23 @@
+.containerFacturador {
+ margin-left: 12px;
+  background: none;
+  box-shadow: none;
+}
+
+.containerClientes {
+  margin-left: 150px;
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0px 3px 10px rgba(0,0,0,0.1);
+}
+
+.titleLarge {
+  font-size: 2rem;
+  color: #0d0e4e;
+}
+
+.titleSmall {
+  font-size: 1.2rem;
+  margin-bottom: 0.5rem;
+  color: #0d0e4e;
+}
