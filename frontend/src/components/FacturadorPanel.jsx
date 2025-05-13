@@ -11,10 +11,11 @@ import {
 import { toast } from "react-toastify";
 import { generarFacturaPDF } from "../services/pdfGenerator";
 import api from "../api";
-
+import TicketRemito from "./TicketRemito";
+import TicketFacturaC from "./TicketFacturaC";
 import { doc, getDoc, setDoc, increment } from "firebase/firestore";
 import { db } from "../firebase";
-
+import { renderToStaticMarkup } from 'react-dom/server';
 import "./FacturadorPanel.css";
 
 const FacturadorPanel = () => {
@@ -202,7 +203,7 @@ const FacturadorPanel = () => {
       await generarPDF();
 
       if (tipoDocumento === "Remito") {
-        const nroRemito = await obtenerProximoNumeroRemito(); // ✅ contador
+        const nroRemito = await obtenerProximoNumeroRemito();
 
         const descripcion =
           `Remito nro #${nroRemito}` +
@@ -223,9 +224,44 @@ const FacturadorPanel = () => {
         });
 
         setSuccess(`✅ Remito #${nroRemito} registrado correctamente`);
+        setCobroRealizado(true);
+
+        // ✅ Imprimir automáticamente el ticket del remito
+        const htmlTicket = renderToStaticMarkup(
+          <TicketRemito
+            datos={{
+              cliente: {
+                nombre: clienteSeleccionado?.nombre || "Consumidor Final",
+                nroDoc:
+                  clienteSeleccionado?.documento ||
+                  clienteSeleccionado?.cuit ||
+                  "0",
+              },
+              productos: carrito,
+              fecha: new Date().toLocaleDateString("es-AR"),
+              nroRemito: `0001-${String(nroRemito).padStart(8, "0")}`,
+            }}
+          />
+        );
+
+        const ticketWindow = window.open("", "_blank");
+        ticketWindow.document.write(`
+    <html>
+      <head><title>Ticket Remito</title></head>
+      <body>${htmlTicket}</body>
+      <script>
+        window.onload = function() {
+          window.print();
+          setTimeout(() => window.close(), 500);
+        };
+      </script>
+    </html>
+  `);
+        ticketWindow.document.close();
+
+        // Limpiar carrito y total después de imprimir
         setCarrito([]);
         setTotal(0);
-        setCobroRealizado(true);
         return;
       }
 
@@ -645,22 +681,56 @@ const FacturadorPanel = () => {
           archivoPdf: resultado.archivoPdf || "",
         });
 
+        const htmlTicket = renderToStaticMarkup(
+          <TicketFacturaC
+            datos={{
+              cliente: {
+                nombre: cliente.nombre,
+                tipoDoc: receptor.tipoDoc,
+                nroDoc: receptor.nroDoc,
+              },
+              productos: carrito,
+              importeTotal: totalCalculado,
+              importeNeto: subtotalCalculado,
+              fecha: new Date().toLocaleDateString("es-AR"),
+              CAE: resultado.cae,
+              CAEVto: resultado.vencimientoCae,
+              nroFacturaCompleto: resultado.numeroFactura,
+            }}
+          />
+        );
+
+        const ticketWindow = window.open("", "_blank");
+        ticketWindow.document.write(`
+  <html>
+    <head><title>Ticket Factura C</title></head>
+    <body>${htmlTicket}</body>
+    <script>
+      window.onload = function() {
+        window.print();
+        setTimeout(() => window.close(), 500);
+      };
+    </script>
+  </html>
+`);
+        ticketWindow.document.close();
+
         toast.success(
           `✅ Factura emitida. N°: ${resultado.numeroFactura} - CAE: ${resultado.cae}`
         );
       }
     } catch (error) {
-  console.error("Error en handleEnviarAFIP:", error);
+      console.error("Error en handleEnviarAFIP:", error);
 
-  if (error.code === "ECONNABORTED") {
-    toast.error("❌ Tiempo de espera agotado. AFIP no respondió a tiempo.");
-  } else if (error.response?.status === 500) {
-    toast.error("❌ Error interno del servidor al emitir la factura.");
-  } else {
-    toast.error(error.message || "❌ Error al enviar factura a AFIP");
+      if (error.code === "ECONNABORTED") {
+        toast.error("❌ Tiempo de espera agotado. AFIP no respondió a tiempo.");
+      } else if (error.response?.status === 500) {
+        toast.error("❌ Error interno del servidor al emitir la factura.");
+      } else {
+        toast.error(error.message || "❌ Error al enviar factura a AFIP");
+      }
+    }
   }
-}
-}
 
   // Función auxiliar para validar CUIT
   const validarCUIT = (cuit) => {
