@@ -659,7 +659,7 @@ const FacturadorPanel = () => {
             tipo: "ingreso",
             monto: total,
             descripcion: `Pago de factura ${resultado.numeroFactura}`,
-            formaPago: "efectivo",
+            formaPago: medioPago || "efectivo",
             fecha: new Date().toISOString(),
             usuario: {
               nombre: "Admin",
