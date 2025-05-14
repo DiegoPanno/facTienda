@@ -15,8 +15,9 @@ import TicketRemito from "./TicketRemito";
 import TicketFacturaC from "./TicketFacturaC";
 import { doc, getDoc, setDoc, increment } from "firebase/firestore";
 import { db } from "../firebase";
-import { renderToStaticMarkup } from 'react-dom/server';
+import { renderToStaticMarkup } from "react-dom/server";
 import "./FacturadorPanel.css";
+import BuscadorProductos from "./BuscadorProductos";
 
 const FacturadorPanel = () => {
   // Estados del componente
@@ -908,10 +909,16 @@ const FacturadorPanel = () => {
             )}
 
             {/* Buscador de productos */}
+            {/* Buscador por lector de código de barras */}
             <div style={{ marginBottom: "1.5rem" }}>
+              <BuscadorProductos  onSeleccionar={handleAgregarCarrito} />
+            </div>
+
+            {/* Búsqueda manual por nombre */}
+            <div style={{ margin: "1rem 0" }}>
               <input
                 type="text"
-                placeholder="Buscar producto por nombre o código..."
+                placeholder="Buscar por nombre manualmente..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 style={{
@@ -925,7 +932,6 @@ const FacturadorPanel = () => {
               />
             </div>
 
-            {/* Listado de productos filtrados */}
             {searchTerm && (
               <div
                 style={{
@@ -959,8 +965,6 @@ const FacturadorPanel = () => {
                           display: "flex",
                           justifyContent: "space-between",
                           alignItems: "center",
-                          transition: "background-color 0.2s",
-                          ":hover": { backgroundColor: "#f9f9f9" },
                         }}
                       >
                         <div style={{ flex: 1 }}>
@@ -1001,8 +1005,6 @@ const FacturadorPanel = () => {
                               borderRadius: "4px",
                               cursor: "pointer",
                               fontWeight: "bold",
-                              transition: "background-color 0.2s",
-                              ":hover": { backgroundColor: "#3e8e41" },
                             }}
                           >
                             Agregar

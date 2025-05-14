@@ -1,4 +1,3 @@
-
 import { obtenerProductos } from "../services/productService";
 import { useState, useEffect, useRef } from "react";
 
@@ -6,7 +5,7 @@ const BuscadorProductos = ({ onSeleccionar }) => {
   const [query, setQuery] = useState("");
   const [productos, setProductos] = useState([]);
   const [mostrarResultados, setMostrarResultados] = useState(false);
-  const inputRef = useRef(null); 
+  const inputRef = useRef(null);
 
   useEffect(() => {
     const cargarProductos = async () => {
@@ -15,6 +14,22 @@ const BuscadorProductos = ({ onSeleccionar }) => {
     };
     cargarProductos();
   }, []);
+
+  const buscarYSeleccionar = (valor) => {
+    const codigo = valor.trim().toLowerCase();
+    const productoEncontrado = productos.find(
+      (p) => p.id?.toString().toLowerCase() === codigo
+    );
+
+    if (productoEncontrado) {
+      onSeleccionar(productoEncontrado);
+      setQuery("");
+      setMostrarResultados(false);
+      inputRef.current?.focus();
+    } else {
+      setMostrarResultados(valor.length > 0);
+    }
+  };
 
   const productosFiltrados = query
     ? productos.filter(
@@ -29,28 +44,21 @@ const BuscadorProductos = ({ onSeleccionar }) => {
       <input
         ref={inputRef}
         type="text"
-        placeholder="Buscar por ID o nombre..."
+        placeholder="Buscar con codigo de barra..."
         value={query}
         onChange={(e) => {
           const valor = e.target.value;
           setQuery(valor);
-
-          // Buscar coincidencia exacta por ID (ideal para código de barras)
-          const productoEncontrado = productos.find(
-            (p) => p.id?.toString().toLowerCase() === valor.toLowerCase()
-          );
-
-          if (productoEncontrado) {
-            onSeleccionar(productoEncontrado); // lo manda al carrito
-            setQuery(""); // borra el input
-            setMostrarResultados(false); // oculta sugerencias
-            inputRef.current?.focus();
-          } else {
-            setMostrarResultados(valor.length > 0);
+          buscarYSeleccionar(valor);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            buscarYSeleccionar(query);
           }
         }}
         style={{
-          width: "100%",
+          width: "79%",
           padding: "0.5rem",
           borderRadius: "4px",
           border: "1px solid #ccc",
@@ -83,9 +91,6 @@ const BuscadorProductos = ({ onSeleccionar }) => {
                   padding: "0.5rem",
                   cursor: "pointer",
                   borderBottom: "1px solid #eee",
-                  ":hover": {
-                    backgroundColor: "#f5f5f5",
-                  },
                 }}
               >
                 {prod.titulo} (ID: {prod.id})
@@ -103,3 +108,4 @@ const BuscadorProductos = ({ onSeleccionar }) => {
 };
 
 export default BuscadorProductos;
+
