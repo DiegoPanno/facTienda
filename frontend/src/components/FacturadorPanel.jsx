@@ -120,7 +120,7 @@ const FacturadorPanel = () => {
   const handleAgregarCarrito = (producto) => {
     setCarrito((prevCarrito) => {
       const existe = prevCarrito.find((p) => p.id === producto.id);
-      const precio = Number(producto.precioVenta) || 0;
+      const precio = Math.round(Number(producto.precioVenta)) || 0;
 
       if (existe) {
         return prevCarrito.map((p) =>

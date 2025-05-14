@@ -146,7 +146,7 @@ const Carrito = ({
                     </div>
                   ) : (
                     <div onClick={() => iniciarEdicionPrecio(prod.id, prod.precioVenta)} style={{ cursor: 'pointer' }}>
-                      ${prod.precioVenta.toFixed(2)}
+                      ${Math.round(prod.precioVenta)}
                       <span style={{ 
                         marginLeft: '5px',
                         fontSize: '0.7rem',
@@ -158,7 +158,7 @@ const Carrito = ({
                 </td>
                 
                 <td style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 'bold' }}>
-                  ${(prod.precioVenta * prod.cantidad).toFixed(2)}
+                  ${Math.round(prod.precioVenta * prod.cantidad)}
                 </td>
                 
                 <td style={{ padding: '12px 8px', textAlign: 'center' }}>
