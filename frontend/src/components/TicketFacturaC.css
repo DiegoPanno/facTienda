@@ -15,10 +15,13 @@
   }
 
   #ticket {
-    width: 58mm;
-    padding: 5px;
-    font-size: 10px;
-    font-family: monospace;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 58mm !important;
+    padding: 5px !important;
+    font-size: 14px !important; /* Aumentado */
+    font-family: helvetica, sans-serif !important; /* Cambiado */
     page-break-inside: avoid;
     page-break-after: avoid;
   }

@@ -1,6 +1,7 @@
 import "./TicketFacturaC.css";
 import QRCode from "react-qr-code";
 import { ImprimirTicket } from "./ImprimirTicket";
+import logo from "./img/logo tienda.png"
 
 const TicketFacturaC = ({ datos, onClick }) => {
   const {
@@ -39,13 +40,19 @@ const TicketFacturaC = ({ datos, onClick }) => {
       id="ticket"
       style={{
         width: "58mm",
-        fontSize: "10px",
-        fontFamily: "monospace",
+        padding: "5px",
+        fontSize: "12px", // antes 10px
+        fontFamily: "helvetica, sans-serif", // antes monospace
         cursor: "pointer",
       }}
       onClick={onClick}
     >
       <center>
+        <img
+          src={logo}
+          alt="Logo"
+          style={{ width: "40mm", marginBottom: "8px" }}
+        />
         <h3>TIENDA LIBRE DE GLUTEN</h3>
         <p>Factura C N° {nroFacturaCompleto}</p>
         <p>Fecha: {fecha}</p>

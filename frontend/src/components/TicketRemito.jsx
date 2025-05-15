@@ -1,5 +1,6 @@
 import "./TicketFacturaC.css";
-import { ImprimirTicket } from './ImprimirTicket';
+import { ImprimirTicket } from "./ImprimirTicket";
+import logo from "./img/logo tienda.png"
 
 const TicketRemito = ({ datos, onClick }) => {
   const { cliente, productos, fecha, nroRemito = "0001-00000001" } = datos;
@@ -10,14 +11,18 @@ const TicketRemito = ({ datos, onClick }) => {
       style={{
         width: "58mm",
         padding: "5px",
-        fontSize: "10px",
-        fontFamily: "monospace",
-        lineHeight: "1.4",
-        cursor: "pointer"
+        fontSize: "12px", // antes 10px
+        fontFamily: "helvetica, sans-serif", // antes monospace
+        cursor: "pointer",
       }}
       onClick={onClick}
     >
       <center>
+        <img
+          src={logo}
+          alt="Logo"
+          style={{ width: "40mm", marginBottom: "8px" }}
+        />
         <h3 style={{ margin: "0" }}>TIENDA LIBRE DE GLUTEN</h3>
         <p style={{ margin: 0 }}>9 DE JULIO 2957</p>
         <p style={{ margin: 0 }}>Mar del Plata</p>
@@ -39,7 +44,9 @@ const TicketRemito = ({ datos, onClick }) => {
       )}
       <hr />
 
-      <p><strong>Detalle:</strong></p>
+      <p>
+        <strong>Detalle:</strong>
+      </p>
       {productos.map((prod, i) => (
         <div key={i}>
           <p style={{ margin: 0 }}>{prod.titulo}</p>
@@ -52,7 +59,8 @@ const TicketRemito = ({ datos, onClick }) => {
 
       <hr />
       <p>
-        <strong>Total:</strong> ${productos
+        <strong>Total:</strong> $
+        {productos
           .reduce((acc, p) => acc + p.precioVenta * p.cantidad, 0)
           .toFixed(2)}
       </p>
@@ -67,7 +75,9 @@ const TicketRemito = ({ datos, onClick }) => {
 
 // Exportamos ambas versiones
 export { TicketRemito }; // Versión normal
-export default ({ datos }) => ( // Versión con impresión
+export default (
+  { datos } // Versión con impresión
+) => (
   <ImprimirTicket>
     <TicketRemito datos={datos} />
   </ImprimirTicket>

@@ -40,8 +40,8 @@ export const ImprimirTicket = ({ children }) => {
             #ticket {
               width: 58mm;
               padding: 5px;
-              font-size: 10px;
-              font-family: monospace;
+              font-size: 14px;
+              font-family: helvetica, sans-serif;
             }
           </style>
         </head>
