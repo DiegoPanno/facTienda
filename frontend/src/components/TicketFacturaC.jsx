@@ -91,7 +91,7 @@ const TicketFacturaC = ({ datos, onClick }) => {
             display: "inline-block",
           }}
         >
-          <QRCode value={urlQR} size={80} />
+          <QRCode value={urlQR} size={120} />
         </div>
         <p>Gracias por su compra</p>
       </center>
