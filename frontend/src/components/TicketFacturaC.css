@@ -4,6 +4,7 @@
     padding: 0;
     width: 58mm;
     height: auto;
+    font-family: Arial, sans-serif;
   }
 
   body * {
@@ -20,9 +21,36 @@
     left: 0;
     width: 58mm !important;
     padding: 5px !important;
-    font-size: 18px !important; /* Aumentado */
-    font-family: helvetica, sans-serif !important; /* Cambiado */
+    font-size: 18px !important;
+    font-family: Arial, sans-serif !important;
     page-break-inside: avoid;
     page-break-after: avoid;
+  }
+
+  #ticket table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  #ticket th, #ticket td {
+    padding: 2px 0;
+    text-align: left;
+  }
+
+  #ticket th {
+    border-bottom: 1px solid #000;
+  }
+
+  #ticket td {
+    border-bottom: 1px solid #eee;
+  }
+
+  #ticket hr {
+    border-top: 1px dashed #000;
+    margin: 6px 0;
+  }
+
+  #ticket center {
+    text-align: center;
   }
 }

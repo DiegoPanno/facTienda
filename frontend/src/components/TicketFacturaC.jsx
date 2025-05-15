@@ -35,14 +35,16 @@ const TicketFacturaC = ({ datos, onClick }) => {
     JSON.stringify(qrData)
   )}`;
 
+  const iva = importeTotal - importeNeto;
+
   return (
     <div
       id="ticket"
       style={{
         width: "58mm",
         padding: "5px",
-        fontSize: "20px", // antes 10px
-        fontFamily: "helvetica, sans-serif", // antes monospace
+        fontSize: "18px",
+        fontFamily: "Arial, sans-serif",
         cursor: "pointer",
       }}
       onClick={onClick}
@@ -53,47 +55,85 @@ const TicketFacturaC = ({ datos, onClick }) => {
           alt="Logo"
           style={{ width: "40mm", marginBottom: "8px" }}
         />
-        <h3>TIENDA LIBRE DE GLUTEN</h3>
-        <p>Factura C N° {nroFacturaCompleto}</p>
-        <p>Fecha: {fecha}</p>
-        <p>CUIT: 20267036099</p>
-        <p>IVA: Monotributo</p>
-        <hr />
+        <h3 style={{ margin: "4px 0" }}>TIENDA LIBRE DE GLUTEN</h3>
+        <p style={{ margin: "2px 0" }}>Monotributista - CUIT: 20-26703609-9</p>
+        <p style={{ margin: "2px 0" }}>9 de julio 2957 - Mar del Plata</p>
+        <p style={{ margin: "4px 0" }}>Tel: (223) 6364740</p>
+        <hr style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
       </center>
-      <p>Cliente: {cliente.nombre}</p>
-      <p>
-        {cliente.tipoDoc === 96 ? "DNI" : "CUIT"}: {cliente.nroDoc}
-      </p>
-      <hr />
-      {productos.map((prod, i) => (
-        <div key={i}>
-          <p>{prod.descripcion || prod.titulo}</p>
-          <p>
-            {prod.cantidad} x $
-            {prod.precioUnitario?.toFixed(2) || prod.precioVenta?.toFixed(2)} =
-            $
-            {(
-              prod.cantidad * (prod.precioUnitario || prod.precioVenta)
-            ).toFixed(2)}
-          </p>
+      
+      <div style={{ textAlign: "center", marginBottom: "6px" }}>
+        <strong>FACTURA C</strong>
+        <p style={{ margin: "2px 0" }}>N° {nroFacturaCompleto}</p>
+        <p style={{ margin: "2px 0" }}>Fecha: {fecha}</p>
+      </div>
+      
+      <hr style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
+      
+      <div style={{ marginBottom: "6px" }}>
+        <p style={{ margin: "2px 0" }}><strong>Cliente:</strong> {cliente.nombre}</p>
+        <p style={{ margin: "2px 0" }}>
+          <strong>{cliente.tipoDoc === 96 ? "DNI:" : "CUIT:"}</strong> {cliente.nroDoc}
+        </p>
+      </div>
+      
+      <hr style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
+      
+      <table style={{ width: "100%", borderCollapse: "collapse", margin: "6px 0" }}>
+        <thead>
+          <tr>
+            <th style={{ textAlign: "left", padding: "2px 0", borderBottom: "1px solid #ddd" }}>Descripción</th>
+            <th style={{ textAlign: "right", padding: "2px 0", borderBottom: "1px solid #ddd" }}>Precio</th>
+          </tr>
+        </thead>
+        <tbody>
+          {productos.map((prod, i) => (
+            <tr key={i}>
+              <td style={{ padding: "2px 0", borderBottom: "1px solid #eee" }}>
+                {prod.cantidad} x {prod.descripcion || prod.titulo}
+              </td>
+              <td style={{ textAlign: "right", padding: "2px 0", borderBottom: "1px solid #eee" }}>
+                ${(prod.precioUnitario || prod.precioVenta).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      
+      <hr style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
+      
+      <div style={{ marginBottom: "6px" }}>
+        <p style={{ margin: "2px 0", textAlign: "right" }}>
+          <span style={{ float: "left" }}>Subtotal:</span>
+          ${importeNeto.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+        </p>
+        <p style={{ margin: "2px 0", textAlign: "right" }}>
+          <span style={{ float: "left" }}>IVA 21%:</span>
+          ${iva.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+        </p>
+        <p style={{ margin: "4px 0", textAlign: "right", fontWeight: "bold" }}>
+          <span style={{ float: "left" }}>Total:</span>
+          ${importeTotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+        </p>
+      </div>
+      
+      <div style={{ margin: "8px 0", fontSize: "10px" }}>
+        <p style={{ margin: "2px 0" }}>Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)</p>
+        <p style={{ margin: "2px 0" }}>IVA Contenido: ${iva.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
+        <p style={{ margin: "2px 0" }}>Otros Impuestos Nacionales Indirectos: $0,00</p>
+      </div>
+      
+      <div style={{ margin: "8px 0" }}>
+        <p style={{ margin: "2px 0" }}><strong>Forma de Pago:</strong> Efectivo</p>
+        <p style={{ margin: "2px 0" }}><strong>CAE:</strong> {CAE}</p>
+        <p style={{ margin: "2px 0" }}><strong>Vto. CAE:</strong> {CAEVto}</p>
+      </div>
+      
+      <center style={{ marginTop: "10px" }}>
+        <div style={{ background: "white", padding: "4px", display: "inline-block" }}>
+          <QRCode value={urlQR} size={100} />
         </div>
-      ))}
-      <hr />
-      <p>Subtotal: ${importeNeto.toFixed(2)}</p>
-      <p>Total: ${importeTotal.toFixed(2)}</p>
-      <p>CAE: {CAE}</p>
-      <p>Vto CAE: {CAEVto}</p>
-      <center>
-        <div
-          style={{
-            background: "white",
-            padding: "4px",
-            display: "inline-block",
-          }}
-        >
-          <QRCode value={urlQR} size={120} />
-        </div>
-        <p>Gracias por su compra</p>
+        <p style={{ margin: "4px 0", fontSize: "10px" }}>Gracias por su compra</p>
       </center>
     </div>
   );
