@@ -11,7 +11,7 @@ const TicketRemito = ({ datos, onClick }) => {
       style={{
         width: "58mm",
         padding: "5px",
-        fontSize: "12px", // antes 10px
+        fontSize: "18px", // antes 10px
         fontFamily: "helvetica, sans-serif", // antes monospace
         cursor: "pointer",
       }}

@@ -30,7 +30,7 @@ export const ImprimirTicket = ({ children }) => {
               #ticket {
                 width: 58mm !important;
                 padding: 5px !important;
-                font-size: 10px !important;
+                font-size: 18px !important;
                 font-family: monospace !important;
                 page-break-inside: avoid;
                 page-break-after: avoid;
