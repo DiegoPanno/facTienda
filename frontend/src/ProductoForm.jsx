@@ -2,13 +2,19 @@ import { useState, useEffect } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "./firebase";
 import BuscadorProductos from "./components/BuscadorProductos";
-import { actualizarProducto, eliminarProducto, agregarProducto } from "./services/productService";
+import {
+  actualizarProducto,
+  eliminarProducto,
+  agregarProducto,
+} from "./services/productService";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
-const ProductoForm = ({ 
+const ProductoForm = ({
   productoEdit = null, // Valor por defecto
   onProductoGuardado = () => {}, // Función por defecto
   onProductoEliminado = () => {}, // Función por defecto
-  setEditando = () => {} // Función por defecto
+  setEditando = () => {}, // Función por defecto
 }) => {
   const [producto, setProducto] = useState({
     id: "",
@@ -19,7 +25,7 @@ const ProductoForm = ({
     margen: "",
     stock: "",
     categoria: "",
-    proveedor: ""
+    proveedor: "",
   });
 
   const [isSaving, setIsSaving] = useState(false);
@@ -38,7 +44,7 @@ const ProductoForm = ({
         margen: "",
         stock: "",
         categoria: "",
-        proveedor: ""
+        proveedor: "",
       });
       setProductoExiste(false);
       return;
@@ -54,10 +60,9 @@ const ProductoForm = ({
       margen: productoEdit.margen || "",
       stock: productoEdit.stock || "",
       categoria: productoEdit.categoria || "",
-      proveedor: productoEdit.proveedor || ""
+      proveedor: productoEdit.proveedor || "",
     });
     setProductoExiste(true);
-
   }, [productoEdit]); // Solo se ejecuta cuando productoEdit cambia
 
   // Función para verificar existencia del producto
@@ -78,7 +83,6 @@ const ProductoForm = ({
     verificarExistenciaProducto();
   }, [producto.id, productoEdit]);
 
-
   // Verificar existencia del producto cuando cambia el ID
   useEffect(() => {
     const verificarExistencia = async () => {
@@ -93,7 +97,7 @@ const ProductoForm = ({
         }
       }
     };
-    
+
     verificarExistencia();
   }, [producto.id, productoEdit]);
 
@@ -109,61 +113,76 @@ const ProductoForm = ({
     setProducto((prev) => ({ ...prev, [name]: value }));
   };
 
-  
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     // Validación mejorada
     if (!producto.titulo?.trim()) {
       alert("El nombre del producto es requerido");
       return;
     }
-  
-    // Convertir y validar números
-    const precioBase = parseFloat(producto.precioBase.toString().replace(',', '.')) || 0;
-    const margen = parseFloat(producto.margen.toString().replace(',', '.')) || 0;
 
-  
+    // Convertir y validar números
+    const precioBase =
+      parseFloat(producto.precioBase.toString().replace(",", ".")) || 0;
+    const margen =
+      parseFloat(producto.margen.toString().replace(",", ".")) || 0;
+
     if (isNaN(precioBase) || precioBase <= 0) {
       alert("El precio base debe ser un número positivo");
       return;
     }
-  
+
     if (isNaN(margen) || margen < 0) {
       alert("El margen debe ser un número no negativo");
       return;
     }
-  
-    const precioVenta = calcularPrecioVenta(producto.precioBase, producto.margen);
-    const productoCompleto = { 
+
+    const precioVenta = calcularPrecioVenta(
+      producto.precioBase,
+      producto.margen
+    );
+    const productoCompleto = {
       ...producto,
       precioVenta,
       ultimaActualizacion: new Date().toISOString(),
       stock: producto.stock ? parseInt(producto.stock) : 0,
       // Agregar marca de tiempo de creación si es nuevo producto
-      ...(!producto.id && { fechaCreacion: new Date().toISOString() })
+      ...(!producto.id && { fechaCreacion: new Date().toISOString() }),
     };
-  
+
     setIsSaving(true);
     try {
       let resultado;
-      
+
       if (productoEdit || producto.id) {
         // Operación de actualización o creación con ID específico
         resultado = await actualizarProducto(producto.id, productoCompleto);
-        
+
         // Feedback más específico
         if (resultado?.created) {
-          alert("🆕 Producto creado exitosamente (con ID específico)");
+          toast.success("🆕 Producto creado con ID específico", {
+            position: "top-right",
+            autoClose: 3000,
+            theme: "colored",
+          });
         } else {
-          alert("✅ Producto actualizado correctamente");
+          toast.success("✅ Producto actualizado correctamente", {
+            position: "top-right",
+            autoClose: 3000,
+            theme: "colored",
+          });
         }
       } else {
         // Operación de creación con ID automático
         resultado = await agregarProducto(productoCompleto);
-        alert("✅ Producto agregado exitosamente");
+        toast.success("🆕 Producto agregado exitosamente", {
+          position: "top-right",
+          autoClose: 3000,
+          theme: "colored",
+        });
       }
-  
+
       // Resetear el formulario
       setProducto({
         id: "",
@@ -174,45 +193,54 @@ const ProductoForm = ({
         margen: "",
         stock: "",
         categoria: "",
-        proveedor: ""
+        proveedor: "",
       });
-  
+
       // Notificar al componente padre para actualizar la lista
       if (onProductoGuardado) {
         onProductoGuardado();
       }
-  
+
       // Salir del modo edición si estamos editando
       if (productoEdit && setEditando) {
         setEditando(null);
       }
-      
     } catch (error) {
       console.error("Error al guardar producto:", error);
-      
+
       // Mensajes de error más específicos
       let mensajeError = "Ocurrió un error al guardar el producto";
-      if (error.code === 'permission-denied') {
+      if (error.code === "permission-denied") {
         mensajeError = "No tienes permisos para realizar esta acción";
-      } else if (error.message.includes('invalid-argument')) {
+      } else if (error.message.includes("invalid-argument")) {
         mensajeError = "Datos del producto no válidos";
       }
-      
-      alert(`❌ Error: ${mensajeError}`);
+
+      toast.error(`❌ ${mensajeError}`, {
+        position: "top-right",
+        autoClose: 4000,
+        theme: "colored",
+      });
     } finally {
       setIsSaving(false);
     }
   };
 
-
   const handleEliminar = async () => {
     if (!producto.id) return;
-    
-    if (!window.confirm("¿Está seguro de eliminar este producto permanentemente?")) return;
+
+    if (
+      !window.confirm("¿Está seguro de eliminar este producto permanentemente?")
+    )
+      return;
 
     try {
       await eliminarProducto(producto.id);
-      alert("🗑️ Producto eliminado");
+      toast.info("🗑️ Producto eliminado", {
+        position: "top-right",
+        autoClose: 3000,
+        theme: "colored",
+      });
       setProducto({
         id: "",
         codigoBarras: "",
@@ -222,14 +250,18 @@ const ProductoForm = ({
         margen: "",
         stock: "",
         categoria: "",
-        proveedor: ""
+        proveedor: "",
       });
-      
+
       if (onProductoEliminado) onProductoEliminado();
       if (setEditando) setEditando(null); // Salir del modo edición
     } catch (error) {
       console.error("Error eliminando producto:", error);
-      alert(`❌ Error al eliminar: ${error.message}`);
+      toast.error(`❌ Error al eliminar: ${error.message}`, {
+        position: "top-right",
+        autoClose: 4000,
+        theme: "colored",
+      });
     }
   };
 
@@ -238,38 +270,43 @@ const ProductoForm = ({
   return (
     <div style={{ maxWidth: "600px", marginLeft: "150px" }}>
       <h2>{productoEdit ? "Editar Producto" : "Agregar Nuevo Producto"}</h2>
-      
-      <BuscadorProductos 
-      onSeleccionar={(producto) => {
-        setProducto(producto);
-        setProductoExiste(true);
-      }} 
-    />
+
+      <BuscadorProductos
+        onSeleccionar={(producto) => {
+          setProducto(producto);
+          setProductoExiste(true);
+        }}
+      />
 
       {producto.id && (
-        <div style={{ 
-          color: productoExiste ? 'green' : 'orange', 
-          margin: "10px 0",
-          padding: "10px",
-          backgroundColor: "#f5f5f5",
-          borderRadius: "4px",
-          borderLeft: `4px solid ${productoExiste ? 'green' : 'orange'}`
-        }}>
-          {productoExiste ? 
-            "✔ Este producto ya existe y será actualizado" : 
-            "⚠ Este ID no existe, se creará un nuevo producto"}
+        <div
+          style={{
+            color: productoExiste ? "green" : "orange",
+            margin: "10px 0",
+            padding: "10px",
+            backgroundColor: "#f5f5f5",
+            borderRadius: "4px",
+            borderLeft: `4px solid ${productoExiste ? "green" : "orange"}`,
+          }}
+        >
+          {productoExiste
+            ? "✔ Este producto ya existe y será actualizado"
+            : "⚠ Este ID no existe, se creará un nuevo producto"}
         </div>
       )}
 
-      <form onSubmit={handleSubmit} style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "1rem",
-        padding: "20px",
-        border: "1px solid #ddd",
-        borderRadius: "8px",
-        backgroundColor: "#fff"
-      }}>
+      <form
+        onSubmit={handleSubmit}
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "1rem",
+          padding: "20px",
+          border: "1px solid #ddd",
+          borderRadius: "8px",
+          backgroundColor: "#fff",
+        }}
+      >
         <div>
           <label>ID del Producto*</label>
           <input
@@ -321,7 +358,13 @@ const ProductoForm = ({
           />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "1rem",
+          }}
+        >
           <div>
             <label>Precio Base*</label>
             <input
@@ -359,16 +402,22 @@ const ProductoForm = ({
             type="text"
             value={precioVenta ? `$${precioVenta}` : ""}
             readOnly
-            style={{ 
-              width: "100%", 
+            style={{
+              width: "100%",
               padding: "8px",
               backgroundColor: "#f0f0f0",
-              fontWeight: "bold"
+              fontWeight: "bold",
             }}
           />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr",
+            gap: "1rem",
+          }}
+        >
           <div>
             <label>Stock Disponible</label>
             <input
@@ -407,12 +456,14 @@ const ProductoForm = ({
           </div>
         </div>
 
-        <div style={{ 
-          display: "flex", 
-          gap: "1rem", 
-          marginTop: "1.5rem",
-          justifyContent: "flex-end"
-        }}>
+        <div
+          style={{
+            display: "flex",
+            gap: "1rem",
+            marginTop: "1.5rem",
+            justifyContent: "flex-end",
+          }}
+        >
           {producto.id && (
             <button
               type="button"
@@ -424,15 +475,15 @@ const ProductoForm = ({
                 color: "#c62828",
                 border: "1px solid #ef9a9a",
                 borderRadius: "4px",
-                cursor: "pointer"
+                cursor: "pointer",
               }}
             >
               {isSaving ? "Eliminando..." : "Eliminar Producto"}
             </button>
           )}
 
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={isSaving}
             style={{
               padding: "10px 20px",
@@ -441,14 +492,29 @@ const ProductoForm = ({
               border: "none",
               borderRadius: "4px",
               cursor: "pointer",
-              fontWeight: "bold"
+              fontWeight: "bold",
             }}
           >
-            {isSaving ? "Guardando..." : 
-             productoEdit ? "Guardar Cambios" : "Agregar Producto"}
+            {isSaving
+              ? "Guardando..."
+              : productoEdit
+              ? "Guardar Cambios"
+              : "Agregar Producto"}
           </button>
         </div>
       </form>
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="colored" // o "light", "dark"
+      />
     </div>
   );
 };

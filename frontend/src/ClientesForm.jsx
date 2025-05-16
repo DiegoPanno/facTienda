@@ -5,8 +5,9 @@ import {
   Box,
   Typography,
   Paper,
-  Alert,
 } from "@mui/material";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 const ClientesForm = ({
   clienteEdit,
@@ -23,7 +24,6 @@ const ClientesForm = ({
     telefono: "",
     email: "",
   });
-  const [error, setError] = React.useState(null);
 
   React.useEffect(() => {
     if (clienteEdit) {
@@ -50,14 +50,20 @@ const ClientesForm = ({
         doc = "30111222";
         values.nombre = values.nombre || "Consumidor Final";
       } else if (doc.length !== 11) {
-        alert("El CUIT debe contener exactamente 11 dígitos.");
+        toast.error("❌ El CUIT debe contener exactamente 11 dígitos.", {
+          position: "top-center",
+          autoClose: 3000,
+          theme: "colored",
+        });
         return;
       }
     } else {
       if (![8, 1].includes(doc.length)) {
-        alert(
-          "El DNI debe contener exactamente 8 dígitos o 0 para consumidor final."
-        );
+        toast.error("❌ El DNI debe contener 8 dígitos o 0 para consumidor final.", {
+          position: "top-center",
+          autoClose: 3000,
+          theme: "colored",
+        });
         return;
       }
     }
@@ -67,6 +73,12 @@ const ClientesForm = ({
       cuit: doc,
     };
 
+    toast.success("✅ Cliente guardado correctamente", {
+      position: "top-center",
+      autoClose: 2500,
+      theme: "colored",
+    });
+
     onClienteCreado(clienteParaGuardar);
   };
 
@@ -75,8 +87,6 @@ const ClientesForm = ({
       <Typography variant="h6" gutterBottom>
         {clienteEdit ? "Editar Cliente" : "Nuevo Cliente"}
       </Typography>
-
-      {error && <Alert severity="error">{error}</Alert>}
 
       <form onSubmit={handleSubmit}>
         <TextField
@@ -107,9 +117,7 @@ const ClientesForm = ({
                 formatted = `${value.substr(0, 2)}-${value.substr(2)}`;
               }
               if (value.length > 10) {
-                formatted = `${formatted.substr(0, 11)}-${formatted.substr(
-                  11
-                )}`;
+                formatted = `${formatted.substr(0, 11)}-${formatted.substr(11)}`;
               }
               setValues({ ...values, cuit: formatted });
             }}
@@ -158,9 +166,7 @@ const ClientesForm = ({
           margin="normal"
         />
 
-        <Box
-          sx={{ mt: 2, display: "flex", justifyContent: "flex-end", gap: 1 }}
-        >
+        <Box sx={{ mt: 2, display: "flex", justifyContent: "flex-end", gap: 1 }}>
           <Button variant="outlined" onClick={onCancel}>
             Cancelar
           </Button>
@@ -169,10 +175,10 @@ const ClientesForm = ({
           </Button>
         </Box>
       </form>
+
+      <ToastContainer />
     </Paper>
   );
 };
 
 export default ClientesForm;
-
-

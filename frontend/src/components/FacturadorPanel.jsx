@@ -8,7 +8,6 @@ import {
   registrarMovimiento,
   obtenerCajaAbierta,
 } from "../services/cajaService";
-import { toast } from "react-toastify";
 import { generarFacturaPDF } from "../services/pdfGenerator";
 import api from "../api";
 import TicketRemito from "./TicketRemito";
@@ -18,6 +17,8 @@ import { db } from "../firebase";
 import { renderToStaticMarkup } from "react-dom/server";
 import "./FacturadorPanel.css";
 import BuscadorProductos from "./BuscadorProductos";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 const FacturadorPanel = () => {
   // Estados del componente
@@ -135,6 +136,15 @@ const FacturadorPanel = () => {
       ];
     });
     setSearchTerm("");
+    toast.info(`🛒 "${producto.titulo}" agregado al carrito`, {
+      position: "top-center",
+      autoClose: 2000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+      theme: "light",
+    });
   };
 
   // Manejar cambio de cantidad en el carrito
@@ -145,6 +155,16 @@ const FacturadorPanel = () => {
     }
     setCarrito(
       carrito.map((item) => (item.id === id ? { ...item, cantidad } : item))
+    );
+
+    const producto = carrito.find((item) => item.id === id);
+    toast.success(
+      `🔁 "${producto?.titulo}" actualizado a ${cantidad} unidad(es)`,
+      {
+        autoClose: 2000,
+        position: "top-center",
+        theme: "colored",
+      }
     );
   };
 
@@ -171,12 +191,23 @@ const FacturadorPanel = () => {
         .toISOString()
         .slice(0, 10)}.pdf`;
       pdf.save(nombreArchivo);
-      setSuccess(`✅ ${tipoDocumento || "Comprobante"} generado exitosamente`);
+      toast.success(
+        `📄 ${tipoDocumento || "Comprobante"} generado exitosamente`,
+        {
+          position: "top-right",
+          autoClose: 3000,
+          theme: "colored",
+        }
+      );
 
       return pdf.output("blob"); // Retornamos el blob para usar en handleCobrar
     } catch (error) {
       console.error("Error al generar PDF:", error);
-      setError("❌ Error al generar el documento");
+      toast.error("❌ Error al generar el documento", {
+        position: "top-right",
+        autoClose: 4000,
+        theme: "colored",
+      });
       throw error;
     }
   };
@@ -184,19 +215,25 @@ const FacturadorPanel = () => {
   const handleCobrar = async () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
-
     if (carrito.length === 0) {
-      setError("No hay productos en el carrito");
+      toast.error("❌ No hay productos en el carrito", {
+        autoClose: 3000,
+        position: "top-right",
+        theme: "colored",
+      });
       setIsSubmitting(false);
       return;
     }
 
     if (!cajaAbierta?.id) {
-      setError("No hay caja abierta. Abra caja primero.");
+      toast.error("⚠️ No hay una caja abierta. Abrí la caja primero.", {
+        autoClose: 3000,
+        position: "top-right",
+        theme: "colored",
+      });
       setIsSubmitting(false);
       return;
     }
-
     try {
       setLoading(true);
       setError(null);
@@ -616,122 +653,130 @@ const FacturadorPanel = () => {
 
   // Función para enviar la factura a AFIP
   async function handleEnviarAFIP() {
-    try {
-      if (tipoDocumento === "Factura C") {
-        let cliente = clienteSeleccionado
-          ? { ...clienteSeleccionado }
-          : { nombre: "Consumidor Final", cuit: "0" };
+  try {
+    if (tipoDocumento === "Factura C") {
+      let cliente = clienteSeleccionado
+        ? { ...clienteSeleccionado }
+        : { nombre: "Consumidor Final", cuit: "0" };
 
-        if (cliente.cuit !== "0" && !cliente.cuit) {
-          throw new Error(
-            "Seleccione un cliente o utilice CUIT 0 para Consumidor Final"
-          );
-        }
-
-        const receptor = prepararDatosReceptor(cliente, total);
-
-        const items = carrito.map((prod, index) => ({
-          codigo: prod.id || index + 1,
-          descripcion: prod.titulo,
-          cantidad: prod.cantidad,
-          precioUnitario: prod.precioVenta,
-          subtotal: prod.cantidad * prod.precioVenta,
-        }));
-
-        const totalCalculado = parseFloat(
-          items.reduce((acc, item) => acc + item.subtotal, 0).toFixed(2)
+      if (cliente.cuit !== "0" && !cliente.cuit) {
+        toast.warning(
+          "⚠️ Seleccione un cliente válido o utilice CUIT 0 para Consumidor Final"
         );
-        const subtotalCalculado = parseFloat(getSubtotal().toFixed(2));
-
-        const response = await api.post("/api/afip/emitir-factura-c", {
-          cliente: receptor,
-          importeTotal: totalCalculado,
-          importeNeto: subtotalCalculado,
-          fecha: new Date().toISOString().slice(0, 10).replace(/-/g, ""),
-        });
-
-        const resultado = response.data;
-
-        console.log("Respuesta de AFIP:", resultado);
-
-        if (resultado?.Resultado === "A") {
-          await registrarMovimiento(idCaja, {
-            tipo: "ingreso",
-            monto: total,
-            descripcion: `Pago de factura ${resultado.numeroFactura}`,
-            formaPago: medioPago || "efectivo",
-            fecha: new Date().toISOString(),
-            usuario: {
-              nombre: "Admin",
-              uid: "local",
-            },
-          });
-        } else {
-          const mensajeError =
-            resultado?.Observaciones?.Obs?.[0]?.Msg ||
-            "Error al emitir factura";
-          throw new Error(mensajeError);
-        }
-
-        setCaeInfo({
-          cae: resultado.cae || "Sin CAE",
-          vencimiento: resultado.vencimientoCae || "No especificado",
-          numeroFactura: resultado.numeroFactura || "0000-00000000",
-          numero: resultado.numeroFactura?.split("-")[1] || "",
-          fecha: new Date().toLocaleDateString("es-AR"),
-          archivoPdf: resultado.archivoPdf || "",
-        });
-
-        const htmlTicket = renderToStaticMarkup(
-          <TicketFacturaC
-            datos={{
-              cliente: {
-                nombre: cliente.nombre,
-                tipoDoc: receptor.tipoDoc,
-                nroDoc: receptor.nroDoc,
-              },
-              productos: carrito,
-              importeTotal: totalCalculado,
-              importeNeto: subtotalCalculado,
-              fecha: new Date().toLocaleDateString("es-AR"),
-              CAE: resultado.cae,
-              CAEVto: resultado.vencimientoCae,
-              nroFacturaCompleto: resultado.numeroFactura,
-            }}
-          />
-        );
-
-        const ticketWindow = window.open("", "_blank");
-        ticketWindow.document.write(`
-  <html>
-    <head><title>Ticket Factura C</title></head>
-    <body>${htmlTicket}</body>
-    <script>
-      window.onload = function() {
-        window.print();
-        setTimeout(() => window.close(), 500);
-      };
-    </script>
-  </html>
-`);
-        ticketWindow.document.close();
-
-        toast.success(
-          `✅ Factura emitida. N°: ${resultado.numeroFactura} - CAE: ${resultado.cae}`
-        );
+        return;
       }
-    } catch (error) {
-      console.error("Error en handleEnviarAFIP:", error);
 
-      if (error.code === "ECONNABORTED") {
-        toast.error("❌ Tiempo de espera agotado. AFIP no respondió a tiempo.");
-      } else if (error.response?.status === 500) {
-        toast.error("❌ Error interno del servidor al emitir la factura.");
+      const receptor = prepararDatosReceptor(cliente, total);
+
+      const items = carrito.map((prod, index) => ({
+        codigo: prod.id || index + 1,
+        descripcion: prod.titulo,
+        cantidad: prod.cantidad,
+        precioUnitario: prod.precioVenta,
+        subtotal: prod.cantidad * prod.precioVenta,
+      }));
+
+      const totalCalculado = parseFloat(
+        items.reduce((acc, item) => acc + item.subtotal, 0).toFixed(2)
+      );
+      const subtotalCalculado = parseFloat(getSubtotal().toFixed(2));
+
+      const response = await api.post("/api/afip/emitir-factura-c", {
+        cliente: receptor,
+        importeTotal: totalCalculado,
+        importeNeto: subtotalCalculado,
+        fecha: new Date().toISOString().slice(0, 10).replace(/-/g, ""),
+      });
+
+      const resultado = response.data;
+
+      // Formatear punto de venta y número de factura con ceros a la izquierda
+      const [ptoVtaRaw, nroRaw] = (resultado.numeroFactura || "0-0").split("-");
+      const ptoVta = String(ptoVtaRaw).padStart(4, "0");
+      const nroFactura = String(nroRaw).padStart(8, "0");
+      const numeroFacturaFormateado = `${ptoVta}-${nroFactura}`;
+
+      console.log("Respuesta de AFIP:", resultado);
+
+      if (resultado?.Resultado === "A") {
+        await registrarMovimiento(idCaja, {
+          tipo: "ingreso",
+          monto: total,
+          descripcion: `Pago de factura ${numeroFacturaFormateado}`,
+          formaPago: medioPago || "efectivo",
+          fecha: new Date().toISOString(),
+          usuario: {
+            nombre: "Admin",
+            uid: "local",
+          },
+        });
       } else {
-        toast.error(error.message || "❌ Error al enviar factura a AFIP");
+        const mensajeError =
+          resultado?.Observaciones?.Obs?.[0]?.Msg || "Error al emitir factura";
+        toast.error(`❌ ${mensajeError}`);
+        return;
       }
+
+      setCaeInfo({
+        cae: resultado.cae || "Sin CAE",
+        vencimiento: resultado.vencimientoCae || "No especificado",
+        numeroFactura: numeroFacturaFormateado,
+        numero: nroFactura,
+        fecha: new Date().toLocaleDateString("es-AR"),
+        archivoPdf: resultado.archivoPdf || "",
+      });
+
+      const htmlTicket = renderToStaticMarkup(
+        <TicketFacturaC
+          datos={{
+            cliente: {
+              nombre: cliente.nombre,
+              tipoDoc: receptor.tipoDoc,
+              nroDoc: receptor.nroDoc,
+            },
+            productos: carrito,
+            importeTotal: totalCalculado,
+            importeNeto: subtotalCalculado,
+            fecha: new Date().toLocaleDateString("es-AR"),
+            CAE: resultado.cae,
+            CAEVto: resultado.vencimientoCae,
+            nroFacturaCompleto: numeroFacturaFormateado,
+          }}
+        />
+      );
+
+      const ticketWindow = window.open("", "_blank");
+      ticketWindow.document.write(`
+<html>
+  <head><title>Ticket Factura C</title></head>
+  <body>${htmlTicket}</body>
+  <script>
+    window.onload = function() {
+      window.print();
+      setTimeout(() => window.close(), 500);
+    };
+  </script>
+</html>
+`);
+      ticketWindow.document.close();
+
+      toast.success(
+        `✅ Factura emitida. N°: ${numeroFacturaFormateado} - CAE: ${resultado.cae}`
+      );
+    }
+  } catch (error) {
+    console.error("Error en handleEnviarAFIP:", error);
+
+    if (error.code === "ECONNABORTED") {
+      toast.error("❌ Tiempo de espera agotado. AFIP no respondió a tiempo.");
+    } else if (error.response?.status === 500) {
+      toast.error("❌ Error interno del servidor al emitir la factura.");
+    } else {
+      toast.error(error.message || "❌ Error al enviar factura a AFIP");
     }
   }
+}
+
 
   // Función auxiliar para validar CUIT
   const validarCUIT = (cuit) => {
@@ -764,12 +809,25 @@ const FacturadorPanel = () => {
 
   // Función para eliminar un producto del carrito
   const handleEliminarProducto = (productoId) => {
+    const productoEliminado = carrito.find((item) => item.id === productoId);
     setCarrito(carrito.filter((item) => item.id !== productoId));
+
+    if (productoEliminado) {
+      toast.info(`🗑️ "${productoEliminado.titulo}" eliminado del carrito`, {
+        position: "top-center",
+        autoClose: 2000,
+        theme: "light",
+      });
+    }
   };
 
   const handleGenerarFacturaPDF = async () => {
     if (!caeInfo?.cae) {
-      toast.error("Primero debe emitir la factura con AFIP");
+      toast.error("❌ Primero debe emitir la factura con AFIP", {
+        position: "top-right",
+        autoClose: 3000,
+        theme: "colored",
+      });
       return;
     }
 
@@ -812,10 +870,18 @@ const FacturadorPanel = () => {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-      toast.success("Factura generada con éxito");
+      toast.success("📥 Factura PDF generada con éxito", {
+        position: "top-center",
+        autoClose: 3000,
+        theme: "colored",
+      });
     } catch (error) {
       console.error("Error al generar factura:", error);
-      toast.error("Error al generar la factura");
+      toast.error("❌ Error al generar la factura", {
+        position: "top-center",
+        autoClose: 4000,
+        theme: "colored",
+      });
     }
   };
 
@@ -911,7 +977,7 @@ const FacturadorPanel = () => {
             {/* Buscador de productos */}
             {/* Buscador por lector de código de barras */}
             <div style={{ marginBottom: "1.5rem" }}>
-              <BuscadorProductos  onSeleccionar={handleAgregarCarrito} />
+              <BuscadorProductos onSeleccionar={handleAgregarCarrito} />
             </div>
 
             {/* Búsqueda manual por nombre */}
@@ -1409,13 +1475,25 @@ const FacturadorPanel = () => {
                   >
                     Descargar Factura
                   </button>
-                  
                 </div>
               </div>
             )}
           </div>
         </div>
       </div>
+
+      <ToastContainer
+        position="top-center"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="colored"
+      />
     </div>
   );
 };
