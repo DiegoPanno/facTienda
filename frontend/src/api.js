@@ -23,4 +23,10 @@ export const emitirFactura = async (facturaData) => {
   return await api.post('/api/afip/emitir-factura-c', facturaData); 
 };
 
+
+export const emitirNotaCredito = async (datosNotaCredito) => {
+  const response = await api.post('/api/afip/emitir-nota-credito-c', datosNotaCredito);
+  return response.data;
+};
+
 export default api;

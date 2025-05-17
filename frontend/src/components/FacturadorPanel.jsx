@@ -38,6 +38,8 @@ const FacturadorPanel = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [caeInfo, setCaeInfo] = useState(null);
   const [idCaja, setIdCaja] = useState(null);
+  const [ptoVtaAsociado, setPtoVtaAsociado] = useState("");
+  const [nroAsociado, setNroAsociado] = useState("");
 
   const getSubtotal = () => total / 1.21;
   const getIVA = () => total - getSubtotal();
@@ -616,45 +618,49 @@ const FacturadorPanel = () => {
   );
 
   // Función para preparar los datos del receptor (cliente)
-  function prepararDatosReceptor(clienteSeleccionado, totalFactura) {
-    const doc = (
-      clienteSeleccionado?.cuit ||
-      clienteSeleccionado?.documento ||
-      "0"
-    ).replace(/\D/g, "");
-    const nombre = clienteSeleccionado?.nombre || "Consumidor Final";
-
-    let tipoDocAfip = 99;
-    let nroDoc = 0;
-
-    if (doc.length === 11) {
-      tipoDocAfip = 80; // CUIT
-      nroDoc = parseInt(doc);
-    } else if (doc.length === 8) {
-      tipoDocAfip = 96; // DNI
-      nroDoc = parseInt(doc);
-    }
-
-    // Si es consumidor final y monto es menor a $100.000, usar tipo 99
-    if (
-      nombre.toUpperCase() === "CONSUMIDOR FINAL" &&
-      totalFactura < 99999.99
-    ) {
-      tipoDocAfip = 99;
-      nroDoc = 0;
-    }
-
+function prepararDatosReceptor(clienteSeleccionado, totalFactura) {
+  // ⚠️ Verificamos si el cliente está definido
+  if (!clienteSeleccionado) {
     return {
-      nombre,
-      tipoDoc: tipoDocAfip,
-      nroDoc,
+      nombre: "Consumidor Final",
+      tipoDoc: 99,
+      nroDoc: 0,
     };
   }
+
+  const rawDoc = clienteSeleccionado.cuit || clienteSeleccionado.documento || "0";
+  const doc = rawDoc.replace(/\D/g, "");
+  const nombre = clienteSeleccionado.nombre || "Consumidor Final";
+
+  let tipoDocAfip = 99;
+  let nroDoc = 0;
+
+  if (doc.length === 11) {
+    tipoDocAfip = 80; // CUIT
+    nroDoc = parseInt(doc);
+  } else if (doc.length === 8) {
+    tipoDocAfip = 96; // DNI
+    nroDoc = parseInt(doc);
+  }
+
+  // Consumidor final con total < 99999.99
+  if (nombre.toUpperCase() === "CONSUMIDOR FINAL" && totalFactura < 99999.99) {
+    tipoDocAfip = 99;
+    nroDoc = 0;
+  }
+
+  return {
+    nombre,
+    tipoDoc: tipoDocAfip,
+    nroDoc,
+  };
+}
+
+
 
   // Función para enviar la factura a AFIP
 async function handleEnviarAFIP() {
   try {
-    // FACTURA C
     if (tipoDocumento === "Factura C") {
       let cliente = clienteSeleccionado
         ? { ...clienteSeleccionado }
@@ -689,12 +695,20 @@ async function handleEnviarAFIP() {
         fecha: new Date().toISOString().slice(0, 10).replace(/-/g, ""),
       });
 
-      const resultado = response.data;
+      // ✅ Manejo robusto de la respuesta
+      const resultado = response.data?.data || response.data;
+      console.log("🧾 Respuesta AFIP (frontend):", resultado);
 
-      const [ptoVtaRaw, nroRaw] = (resultado.numero || "0-0").split("-");
-      const ptoVta = String(ptoVtaRaw).padStart(4, "0");
-      const nroFactura = String(nroRaw).padStart(8, "0");
-      const numeroFacturaFormateado = `${ptoVta}-${nroFactura}`;
+      // Cambio aquí: usar numeroFactura en lugar de numero
+      const nroFactura = resultado.numeroFactura || "0000-00000000";
+      const nroFacturaSplit = nroFactura.split("-");
+      const ptoVtaFactura = nroFacturaSplit[0] || "0000";
+      const nroCbte = nroFacturaSplit[1] || "00000000";
+
+      const numeroFacturaFormateado = `${ptoVtaFactura.padStart(
+        4,
+        "0"
+      )}-${nroCbte.padStart(8, "0")}`;
 
       if (resultado?.Resultado === "A") {
         await registrarMovimiento(idCaja, {
@@ -712,15 +726,17 @@ async function handleEnviarAFIP() {
         return;
       }
 
+      // Cambio aquí: usar vencimientoCae con minúscula 'a'
       setCaeInfo({
         cae: resultado.cae || "Sin CAE",
-        vencimiento: resultado.vencimientoCAE || "No especificado",
+        vencimiento: resultado.vencimientoCae || "No especificado",
         numeroFactura: numeroFacturaFormateado,
-        numero: nroFactura,
+        numero: nroCbte.padStart(8, "0"),
         fecha: new Date().toLocaleDateString("es-AR"),
-        archivoPdf: resultado.archivos?.pdf || "",
+        archivoPdf: resultado.archivoPdf || "",
       });
 
+      // ✅ Imprimir ticket
       const htmlTicket = renderToStaticMarkup(
         <TicketFacturaC
           datos={{
@@ -734,56 +750,66 @@ async function handleEnviarAFIP() {
             importeNeto: subtotalCalculado,
             fecha: new Date().toLocaleDateString("es-AR"),
             CAE: resultado.cae,
-            CAEVto: resultado.vencimientoCAE,
+            CAEVto: resultado.vencimientoCae,
             nroFacturaCompleto: numeroFacturaFormateado,
           }}
         />
       );
 
       const ticketWindow = window.open("", "_blank");
+      if (!ticketWindow) {
+        toast.error(
+          "❌ No se pudo abrir la ventana para imprimir el ticket. Verificá si el navegador está bloqueando ventanas emergentes."
+        );
+        return;
+      }
+
       ticketWindow.document.write(`
-<html>
-  <head><title>Ticket Factura C</title></head>
-  <body>${htmlTicket}</body>
-  <script>
-    window.onload = function() {
-      window.print();
-      setTimeout(() => window.close(), 500);
-    };
-  </script>
-</html>
-`);
+        <html>
+          <head><title>Ticket Factura C</title></head>
+          <body>${htmlTicket}</body>
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(() => window.close(), 500);
+            };
+          </script>
+        </html>
+      `);
       ticketWindow.document.close();
 
       toast.success(
         `✅ Factura emitida. N°: ${numeroFacturaFormateado} - CAE: ${resultado.cae}`
       );
-    }
+    } // <-- Cierre del if Factura C
 
-    // NOTA DE CRÉDITO C
+    // Bloque para Nota de Crédito C
     if (tipoDocumento === "Nota de Crédito C") {
-      if (!clienteSeleccionado) {
-        toast.error("⚠️ Debe seleccionar un cliente válido");
+      const cliente = clienteSeleccionado
+        ? { ...clienteSeleccionado }
+        : { nombre: "Consumidor Final", cuit: "0" };
+
+      if (!ptoVtaAsociado || !nroAsociado) {
+        toast.error("⚠️ Debe ingresar punto de venta y número de factura a anular");
         return;
       }
 
-      if (!caeInfo?.numeroFactura) {
-        toast.error("⚠️ No se encuentra una factura asociada para la NC");
+      const ptoVtaNC = parseInt(ptoVtaAsociado);
+      const nroFacturaNC = parseInt(nroAsociado);
+
+      if (isNaN(ptoVtaNC) || isNaN(nroFacturaNC)) {
+        toast.error("⚠️ Punto de venta y número deben ser numéricos");
         return;
       }
 
-      const receptor = prepararDatosReceptor(clienteSeleccionado, total);
-
-      const [ptoVtaStr, nroStr] = caeInfo.numeroFactura.split("-");
-      const ptoVta = parseInt(ptoVtaStr);
-      const nroFactura = parseInt(nroStr);
+      const receptor = prepararDatosReceptor(cliente, total);
 
       const response = await api.post("/api/afip/emitir-nota-credito-c", {
         cliente: receptor,
         importeTotal: parseFloat(total.toFixed(2)),
         facturaAsociada: {
-          ptoVta,
-          nro: nroFactura,
+          ptoVta: ptoVtaNC,
+          nro: nroFacturaNC,
         },
       });
 
@@ -794,29 +820,10 @@ async function handleEnviarAFIP() {
         return;
       }
 
-      await registrarMovimiento(idCaja, {
-        tipo: "egreso",
-        monto: total,
-        descripcion: `Emisión NC sobre factura ${caeInfo.numeroFactura}`,
-        formaPago: medioPago || "efectivo",
-        fecha: new Date().toISOString(),
-        usuario: { nombre: "Admin", uid: "local" },
-      });
-
-      toast.success(
-        `✅ Nota de Crédito emitida. N°: ${resultado.numero} - CAE: ${resultado.cae}`
-      );
-
-      // Actualizar caeInfo para que puedas generar PDF o mostrar datos
-      setCaeInfo({
-        cae: resultado.cae,
-        vencimiento: resultado.vencimientoCAE,
-        numeroFactura: resultado.numero,
-        numero: resultado.numero.split("-")[1],
-        fecha: new Date().toLocaleDateString("es-AR"),
-        archivoPdf: resultado.archivos?.pdf || "",
-      });
+      // Aquí podés continuar con el manejo del resultado de la Nota de Crédito (ej: registrar movimiento, mostrar info, etc)
+      toast.success("✅ Nota de Crédito emitida correctamente");
     }
+
   } catch (error) {
     console.error("Error en handleEnviarAFIP:", error);
 
@@ -829,6 +836,8 @@ async function handleEnviarAFIP() {
     }
   }
 }
+
+
 
 
   // Función auxiliar para validar CUIT
@@ -1297,6 +1306,49 @@ async function handleEnviarAFIP() {
                 <option value="Recibo C">Recibo</option>
                 <option value="Nota de Crédito C">Nota de Crédito C</option>
               </select>
+              {tipoDocumento === "Nota de Crédito C" && (
+                <div
+                  style={{
+                    marginTop: "1rem",
+                    padding: "1rem",
+                    border: "1px solid #ccc",
+                    borderRadius: "6px",
+                    backgroundColor: "#fafafa",
+                  }}
+                >
+                  <label
+                    style={{
+                      fontWeight: "bold",
+                      display: "block",
+                      marginBottom: "0.5rem",
+                    }}
+                  >
+                    Datos de la Factura a Anular
+                  </label>
+                  <div style={{ display: "flex", gap: "1rem" }}>
+                    <input
+                      type="number"
+                      min="1"
+                      max="9999"
+                      placeholder="Punto de Venta"
+                      value={ptoVtaAsociado}
+                      onChange={(e) =>
+                        setPtoVtaAsociado(e.target.value.slice(0, 4))
+                      }
+                    />
+                    <input
+                      type="number"
+                      min="1"
+                      max="99999999"
+                      placeholder="Número de Factura"
+                      value={nroAsociado}
+                      onChange={(e) =>
+                        setNroAsociado(e.target.value.slice(0, 8))
+                      }
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>
