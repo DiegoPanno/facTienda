@@ -652,8 +652,9 @@ const FacturadorPanel = () => {
   }
 
   // Función para enviar la factura a AFIP
-  async function handleEnviarAFIP() {
+async function handleEnviarAFIP() {
   try {
+    // FACTURA C
     if (tipoDocumento === "Factura C") {
       let cliente = clienteSeleccionado
         ? { ...clienteSeleccionado }
@@ -690,13 +691,10 @@ const FacturadorPanel = () => {
 
       const resultado = response.data;
 
-      // Formatear punto de venta y número de factura con ceros a la izquierda
-      const [ptoVtaRaw, nroRaw] = (resultado.numeroFactura || "0-0").split("-");
+      const [ptoVtaRaw, nroRaw] = (resultado.numero || "0-0").split("-");
       const ptoVta = String(ptoVtaRaw).padStart(4, "0");
       const nroFactura = String(nroRaw).padStart(8, "0");
       const numeroFacturaFormateado = `${ptoVta}-${nroFactura}`;
-
-      console.log("Respuesta de AFIP:", resultado);
 
       if (resultado?.Resultado === "A") {
         await registrarMovimiento(idCaja, {
@@ -705,10 +703,7 @@ const FacturadorPanel = () => {
           descripcion: `Pago de factura ${numeroFacturaFormateado}`,
           formaPago: medioPago || "efectivo",
           fecha: new Date().toISOString(),
-          usuario: {
-            nombre: "Admin",
-            uid: "local",
-          },
+          usuario: { nombre: "Admin", uid: "local" },
         });
       } else {
         const mensajeError =
@@ -719,11 +714,11 @@ const FacturadorPanel = () => {
 
       setCaeInfo({
         cae: resultado.cae || "Sin CAE",
-        vencimiento: resultado.vencimientoCae || "No especificado",
+        vencimiento: resultado.vencimientoCAE || "No especificado",
         numeroFactura: numeroFacturaFormateado,
         numero: nroFactura,
         fecha: new Date().toLocaleDateString("es-AR"),
-        archivoPdf: resultado.archivoPdf || "",
+        archivoPdf: resultado.archivos?.pdf || "",
       });
 
       const htmlTicket = renderToStaticMarkup(
@@ -739,7 +734,7 @@ const FacturadorPanel = () => {
             importeNeto: subtotalCalculado,
             fecha: new Date().toLocaleDateString("es-AR"),
             CAE: resultado.cae,
-            CAEVto: resultado.vencimientoCae,
+            CAEVto: resultado.vencimientoCAE,
             nroFacturaCompleto: numeroFacturaFormateado,
           }}
         />
@@ -764,15 +759,73 @@ const FacturadorPanel = () => {
         `✅ Factura emitida. N°: ${numeroFacturaFormateado} - CAE: ${resultado.cae}`
       );
     }
+
+    // NOTA DE CRÉDITO C
+    if (tipoDocumento === "Nota de Crédito C") {
+      if (!clienteSeleccionado) {
+        toast.error("⚠️ Debe seleccionar un cliente válido");
+        return;
+      }
+
+      if (!caeInfo?.numeroFactura) {
+        toast.error("⚠️ No se encuentra una factura asociada para la NC");
+        return;
+      }
+
+      const receptor = prepararDatosReceptor(clienteSeleccionado, total);
+
+      const [ptoVtaStr, nroStr] = caeInfo.numeroFactura.split("-");
+      const ptoVta = parseInt(ptoVtaStr);
+      const nroFactura = parseInt(nroStr);
+
+      const response = await api.post("/api/afip/emitir-nota-credito-c", {
+        cliente: receptor,
+        importeTotal: parseFloat(total.toFixed(2)),
+        facturaAsociada: {
+          ptoVta,
+          nro: nroFactura,
+        },
+      });
+
+      const resultado = response.data;
+
+      if (resultado?.Resultado !== "A") {
+        toast.error("❌ AFIP rechazó la Nota de Crédito");
+        return;
+      }
+
+      await registrarMovimiento(idCaja, {
+        tipo: "egreso",
+        monto: total,
+        descripcion: `Emisión NC sobre factura ${caeInfo.numeroFactura}`,
+        formaPago: medioPago || "efectivo",
+        fecha: new Date().toISOString(),
+        usuario: { nombre: "Admin", uid: "local" },
+      });
+
+      toast.success(
+        `✅ Nota de Crédito emitida. N°: ${resultado.numero} - CAE: ${resultado.cae}`
+      );
+
+      // Actualizar caeInfo para que puedas generar PDF o mostrar datos
+      setCaeInfo({
+        cae: resultado.cae,
+        vencimiento: resultado.vencimientoCAE,
+        numeroFactura: resultado.numero,
+        numero: resultado.numero.split("-")[1],
+        fecha: new Date().toLocaleDateString("es-AR"),
+        archivoPdf: resultado.archivos?.pdf || "",
+      });
+    }
   } catch (error) {
     console.error("Error en handleEnviarAFIP:", error);
 
     if (error.code === "ECONNABORTED") {
       toast.error("❌ Tiempo de espera agotado. AFIP no respondió a tiempo.");
     } else if (error.response?.status === 500) {
-      toast.error("❌ Error interno del servidor al emitir la factura.");
+      toast.error("❌ Error interno del servidor al emitir el comprobante.");
     } else {
-      toast.error(error.message || "❌ Error al enviar factura a AFIP");
+      toast.error(error.message || "❌ Error al enviar comprobante a AFIP");
     }
   }
 }
