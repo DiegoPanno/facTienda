@@ -20,7 +20,9 @@ export async function generarFacturaPDF(datos) {
     };
 
     const cliente = datos.cliente;
-    const [ptoVtaFormatted, nroFactura] = (datos.nroFacturaCompleto || `${empresa.ptoVta}-00000001`).split("-");
+    const [ptoVtaRaw, nroFactRaw] = (datos.nroFacturaCompleto || `${empresa.ptoVta}-1`).split("-");
+    const ptoVtaFormatted = String(ptoVtaRaw).padStart(4, '0');
+    const nroFactura = String(nroFactRaw).padStart(8, '0');
 
     // Generar QR
     const datosQR = {
@@ -51,7 +53,7 @@ export async function generarFacturaPDF(datos) {
     page.drawText(`Teléfono: ${empresa.telefono}`, { x: 50, y: 725, size: 10, font });
 
     page.drawText(`FACTURA C N° ${ptoVtaFormatted}-${nroFactura}`, {
-      x: 50, y: 700, size: 14, font: fontBold, color: rgb(0, 0, 0)
+    x: 50, y: 700, size: 14, font: fontBold, color: rgb(0, 0, 0)
     });
 
     page.drawText(`Cliente: ${cliente.nombre}`, { x: 50, y: 670, size: 12, font: fontBold });
