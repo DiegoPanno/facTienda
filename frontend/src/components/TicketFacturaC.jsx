@@ -71,7 +71,7 @@ const TicketFacturaC = ({ datos, onClick }) => {
       <hr style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
       
       <div style={{ marginBottom: "6px" }}>
-        <p style={{ margin: "2px 0" }}><strong>Cliente:</strong> {cliente.nombre}</p>
+        <p style={{ margin: "2px 0" }}><strong>Cliente:</strong>{`${datos.cliente.nombre} ${datos.cliente.apellido}`}</p>
         <p style={{ margin: "2px 0" }}>
           <strong>{cliente.tipoDoc === 96 ? "DNI:" : "CUIT:"}</strong> {cliente.nroDoc}
         </p>
