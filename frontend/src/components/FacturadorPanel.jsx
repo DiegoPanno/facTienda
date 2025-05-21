@@ -618,153 +618,156 @@ const FacturadorPanel = () => {
   );
 
   // Función para preparar los datos del receptor (cliente)
-function prepararDatosReceptor(clienteSeleccionado, totalFactura) {
-  // ⚠️ Verificamos si el cliente está definido
-  if (!clienteSeleccionado) {
+  function prepararDatosReceptor(clienteSeleccionado, totalFactura) {
+    // ⚠️ Verificamos si el cliente está definido
+    if (!clienteSeleccionado) {
+      return {
+        nombre: "Consumidor Final",
+        tipoDoc: 99,
+        nroDoc: 0,
+      };
+    }
+
+    const rawDoc =
+      clienteSeleccionado.cuit || clienteSeleccionado.documento || "0";
+    const doc = rawDoc.replace(/\D/g, "");
+    const nombre = clienteSeleccionado.nombre || "Consumidor Final";
+
+    let tipoDocAfip = 99;
+    let nroDoc = 0;
+
+    if (doc.length === 11) {
+      tipoDocAfip = 80; // CUIT
+      nroDoc = parseInt(doc);
+    } else if (doc.length === 8) {
+      tipoDocAfip = 96; // DNI
+      nroDoc = parseInt(doc);
+    }
+
+    // Consumidor final con total < 99999.99
+    if (
+      nombre.toUpperCase() === "CONSUMIDOR FINAL" &&
+      totalFactura < 99999.99
+    ) {
+      tipoDocAfip = 99;
+      nroDoc = 0;
+    }
+
     return {
-      nombre: "Consumidor Final",
-      tipoDoc: 99,
-      nroDoc: 0,
+      nombre,
+      tipoDoc: tipoDocAfip,
+      nroDoc,
     };
   }
 
-  const rawDoc = clienteSeleccionado.cuit || clienteSeleccionado.documento || "0";
-  const doc = rawDoc.replace(/\D/g, "");
-  const nombre = clienteSeleccionado.nombre || "Consumidor Final";
-
-  let tipoDocAfip = 99;
-  let nroDoc = 0;
-
-  if (doc.length === 11) {
-    tipoDocAfip = 80; // CUIT
-    nroDoc = parseInt(doc);
-  } else if (doc.length === 8) {
-    tipoDocAfip = 96; // DNI
-    nroDoc = parseInt(doc);
-  }
-
-  // Consumidor final con total < 99999.99
-  if (nombre.toUpperCase() === "CONSUMIDOR FINAL" && totalFactura < 99999.99) {
-    tipoDocAfip = 99;
-    nroDoc = 0;
-  }
-
-  return {
-    nombre,
-    tipoDoc: tipoDocAfip,
-    nroDoc,
-  };
-}
-
-
-
   // Función para enviar la factura a AFIP
-async function handleEnviarAFIP() {
-  try {
-    if (tipoDocumento === "Factura C") {
-      let cliente = clienteSeleccionado
-        ? { ...clienteSeleccionado }
-        : { nombre: "Consumidor Final", cuit: "0" };
+  async function handleEnviarAFIP() {
+    try {
+      if (tipoDocumento === "Factura C") {
+        let cliente = clienteSeleccionado
+          ? { ...clienteSeleccionado }
+          : { nombre: "Consumidor Final", cuit: "0" };
 
-      if (cliente.cuit !== "0" && !cliente.cuit) {
-        toast.warning(
-          "⚠️ Seleccione un cliente válido o utilice CUIT 0 para Consumidor Final"
+        if (cliente.cuit !== "0" && !cliente.cuit) {
+          toast.warning(
+            "⚠️ Seleccione un cliente válido o utilice CUIT 0 para Consumidor Final"
+          );
+          return;
+        }
+
+        const receptor = prepararDatosReceptor(cliente, total);
+
+        const items = carrito.map((prod, index) => ({
+          codigo: prod.id || index + 1,
+          descripcion: prod.titulo,
+          cantidad: prod.cantidad,
+          precioUnitario: prod.precioVenta,
+          subtotal: prod.cantidad * prod.precioVenta,
+        }));
+
+        const totalCalculado = parseFloat(
+          items.reduce((acc, item) => acc + item.subtotal, 0).toFixed(2)
         );
-        return;
-      }
+        const subtotalCalculado = parseFloat(getSubtotal().toFixed(2));
 
-      const receptor = prepararDatosReceptor(cliente, total);
-
-      const items = carrito.map((prod, index) => ({
-        codigo: prod.id || index + 1,
-        descripcion: prod.titulo,
-        cantidad: prod.cantidad,
-        precioUnitario: prod.precioVenta,
-        subtotal: prod.cantidad * prod.precioVenta,
-      }));
-
-      const totalCalculado = parseFloat(
-        items.reduce((acc, item) => acc + item.subtotal, 0).toFixed(2)
-      );
-      const subtotalCalculado = parseFloat(getSubtotal().toFixed(2));
-
-      const response = await api.post("/api/afip/emitir-factura-c", {
-        cliente: receptor,
-        importeTotal: totalCalculado,
-        importeNeto: subtotalCalculado,
-        fecha: new Date().toISOString().slice(0, 10).replace(/-/g, ""),
-      });
-
-      // ✅ Manejo robusto de la respuesta
-      const resultado = response.data?.data || response.data;
-      console.log("🧾 Respuesta AFIP (frontend):", resultado);
-
-      // Cambio aquí: usar numeroFactura en lugar de numero
-      const nroFactura = resultado.numeroFactura || "0000-00000000";
-      const nroFacturaSplit = nroFactura.split("-");
-      const ptoVtaFactura = nroFacturaSplit[0] || "0000";
-      const nroCbte = nroFacturaSplit[1] || "00000000";
-
-      const numeroFacturaFormateado = `${ptoVtaFactura.padStart(
-        4,
-        "0"
-      )}-${nroCbte.padStart(8, "0")}`;
-
-      if (resultado?.Resultado === "A") {
-        await registrarMovimiento(idCaja, {
-          tipo: "ingreso",
-          monto: total,
-          descripcion: `Pago de factura ${numeroFacturaFormateado}`,
-          formaPago: medioPago || "efectivo",
-          fecha: new Date().toISOString(),
-          usuario: { nombre: "Admin", uid: "local" },
+        const response = await api.post("/api/afip/emitir-factura-c", {
+          cliente: receptor,
+          importeTotal: totalCalculado,
+          importeNeto: subtotalCalculado,
+          fecha: new Date().toISOString().slice(0, 10).replace(/-/g, ""),
         });
-      } else {
-        const mensajeError =
-          resultado?.Observaciones?.Obs?.[0]?.Msg || "Error al emitir factura";
-        toast.error(`❌ ${mensajeError}`);
-        return;
-      }
 
-      // Cambio aquí: usar vencimientoCae con minúscula 'a'
-      setCaeInfo({
-        cae: resultado.cae || "Sin CAE",
-        vencimiento: resultado.vencimientoCae || "No especificado",
-        numeroFactura: numeroFacturaFormateado,
-        numero: nroCbte.padStart(8, "0"),
-        fecha: new Date().toLocaleDateString("es-AR"),
-        archivoPdf: resultado.archivoPdf || "",
-      });
+        // ✅ Manejo robusto de la respuesta
+        const resultado = response.data?.data || response.data;
+        console.log("🧾 Respuesta AFIP (frontend):", resultado);
 
-      // ✅ Imprimir ticket
-      const htmlTicket = renderToStaticMarkup(
-        <TicketFacturaC
-          datos={{
-            cliente: {
-              nombre: cliente.nombre,
-              tipoDoc: receptor.tipoDoc,
-              nroDoc: receptor.nroDoc,
-            },
-            productos: carrito,
-            importeTotal: totalCalculado,
-            importeNeto: subtotalCalculado,
-            fecha: new Date().toLocaleDateString("es-AR"),
-            CAE: resultado.cae,
-            CAEVto: resultado.vencimientoCae,
-            nroFacturaCompleto: numeroFacturaFormateado,
-          }}
-        />
-      );
+        // Cambio aquí: usar numeroFactura en lugar de numero
+        const nroFactura = resultado.numeroFactura || "0000-00000000";
+        const nroFacturaSplit = nroFactura.split("-");
+        const ptoVtaFactura = nroFacturaSplit[0] || "0000";
+        const nroCbte = nroFacturaSplit[1] || "00000000";
 
-      const ticketWindow = window.open("", "_blank");
-      if (!ticketWindow) {
-        toast.error(
-          "❌ No se pudo abrir la ventana para imprimir el ticket. Verificá si el navegador está bloqueando ventanas emergentes."
+        const numeroFacturaFormateado = `${ptoVtaFactura.padStart(
+          4,
+          "0"
+        )}-${nroCbte.padStart(8, "0")}`;
+
+        if (resultado?.Resultado === "A") {
+          await registrarMovimiento(idCaja, {
+            tipo: "ingreso",
+            monto: total,
+            descripcion: `Pago de factura ${numeroFacturaFormateado}`,
+            formaPago: medioPago || "efectivo",
+            fecha: new Date().toISOString(),
+            usuario: { nombre: "Admin", uid: "local" },
+          });
+        } else {
+          const mensajeError =
+            resultado?.Observaciones?.Obs?.[0]?.Msg ||
+            "Error al emitir factura";
+          toast.error(`❌ ${mensajeError}`);
+          return;
+        }
+
+        // Cambio aquí: usar vencimientoCae con minúscula 'a'
+        setCaeInfo({
+          cae: resultado.cae || "Sin CAE",
+          vencimiento: resultado.vencimientoCae || "No especificado",
+          numeroFactura: numeroFacturaFormateado,
+          numero: nroCbte.padStart(8, "0"),
+          fecha: new Date().toLocaleDateString("es-AR"),
+          archivoPdf: resultado.archivoPdf || "",
+        });
+
+        // ✅ Imprimir ticket
+        const htmlTicket = renderToStaticMarkup(
+          <TicketFacturaC
+            datos={{
+              cliente: {
+                nombre: cliente.nombre,
+                tipoDoc: receptor.tipoDoc,
+                nroDoc: receptor.nroDoc,
+              },
+              productos: carrito,
+              importeTotal: totalCalculado,
+              importeNeto: subtotalCalculado,
+              fecha: new Date().toLocaleDateString("es-AR"),
+              CAE: resultado.cae,
+              CAEVto: resultado.vencimientoCae,
+              nroFacturaCompleto: numeroFacturaFormateado,
+            }}
+          />
         );
-        return;
-      }
 
-      ticketWindow.document.write(`
+        const ticketWindow = window.open("", "_blank");
+        if (!ticketWindow) {
+          toast.error(
+            "❌ No se pudo abrir la ventana para imprimir el ticket. Verificá si el navegador está bloqueando ventanas emergentes."
+          );
+          return;
+        }
+
+        ticketWindow.document.write(`
         <html>
           <head><title>Ticket Factura C</title></head>
           <body>${htmlTicket}</body>
@@ -776,69 +779,76 @@ async function handleEnviarAFIP() {
           </script>
         </html>
       `);
-      ticketWindow.document.close();
+        ticketWindow.document.close();
 
-      toast.success(
-        `✅ Factura emitida. N°: ${numeroFacturaFormateado} - CAE: ${resultado.cae}`
-      );
-    } // <-- Cierre del if Factura C
+        toast.success(
+          `✅ Factura emitida. N°: ${numeroFacturaFormateado} - CAE: ${resultado.cae}`
+        );
+      } // <-- Cierre del if Factura C
 
-    // Bloque para Nota de Crédito C
-    if (tipoDocumento === "Nota de Crédito C") {
-      const cliente = clienteSeleccionado
-        ? { ...clienteSeleccionado }
-        : { nombre: "Consumidor Final", cuit: "0" };
+      // Bloque para Nota de Crédito C
+      if (tipoDocumento === "Nota de Crédito C") {
+        const cliente = clienteSeleccionado
+          ? { ...clienteSeleccionado }
+          : { nombre: "Consumidor Final", cuit: "0" };
 
-      if (!ptoVtaAsociado || !nroAsociado) {
-        toast.error("⚠️ Debe ingresar punto de venta y número de factura a anular");
-        return;
+        if (!ptoVtaAsociado?.trim() || !nroAsociado?.trim()) {
+          toast.error(
+            "⚠️ Debe ingresar punto de venta y número de factura a anular"
+          );
+          return;
+        }
+
+        const ptoVtaNC = parseInt(ptoVtaAsociado.trim().replace(/^0+/, ""), 10); // elimina ceros a la izquierda
+        const nroFacturaNC = parseInt(
+          nroAsociado.trim().replace(/^0+/, ""),
+          10
+        );
+
+        if (
+          !ptoVtaNC ||
+          !nroFacturaNC ||
+          isNaN(ptoVtaNC) ||
+          isNaN(nroFacturaNC)
+        ) {
+          toast.error(
+            "⚠️ Punto de venta y número deben ser válidos y mayores a 0"
+          );
+          return;
+        }
+
+        const receptor = prepararDatosReceptor(cliente, total);
+
+        const response = await api.post("/api/afip/emitir-nota-credito-c", {
+          cliente: receptor,
+          importeTotal: parseFloat(total.toFixed(2)),
+          facturaAsociada: {
+            ptoVta: ptoVtaNC,
+            nro: nroFacturaNC,
+          },
+        });
+
+        const resultado = response.data;
+
+        if (resultado?.Resultado !== "A") {
+          toast.error("❌ AFIP rechazó la Nota de Crédito");
+          return;
+        }
+
+        toast.success("✅ Nota de Crédito emitida correctamente");
       }
+    } catch (error) {
+      console.error("Error en handleEnviarAFIP:", error);
 
-      const ptoVtaNC = parseInt(ptoVtaAsociado);
-      const nroFacturaNC = parseInt(nroAsociado);
-
-      if (isNaN(ptoVtaNC) || isNaN(nroFacturaNC)) {
-        toast.error("⚠️ Punto de venta y número deben ser numéricos");
-        return;
+      if (error.code === "ECONNABORTED") {
+        toast.error("❌ Tiempo de espera agotado. AFIP no respondió a tiempo.");
+      } else if (error.response?.status === 500) {
+        toast.error("❌ Error interno del servidor al emitir el comprobante.");
+      } else {
+        toast.error(error.message || "❌ Error al enviar comprobante a AFIP");
       }
-
-      const receptor = prepararDatosReceptor(cliente, total);
-
-      const response = await api.post("/api/afip/emitir-nota-credito-c", {
-        cliente: receptor,
-        importeTotal: parseFloat(total.toFixed(2)),
-        facturaAsociada: {
-          ptoVta: ptoVtaNC,
-          nro: nroFacturaNC,
-        },
-      });
-
-      const resultado = response.data;
-
-      if (resultado?.Resultado !== "A") {
-        toast.error("❌ AFIP rechazó la Nota de Crédito");
-        return;
-      }
-
-      // Aquí podés continuar con el manejo del resultado de la Nota de Crédito (ej: registrar movimiento, mostrar info, etc)
-      toast.success("✅ Nota de Crédito emitida correctamente");
-    }
-
-  } catch (error) {
-    console.error("Error en handleEnviarAFIP:", error);
-
-    if (error.code === "ECONNABORTED") {
-      toast.error("❌ Tiempo de espera agotado. AFIP no respondió a tiempo.");
-    } else if (error.response?.status === 500) {
-      toast.error("❌ Error interno del servidor al emitir el comprobante.");
-    } else {
-      toast.error(error.message || "❌ Error al enviar comprobante a AFIP");
     }
   }
-}
-
-
-
 
   // Función auxiliar para validar CUIT
   const validarCUIT = (cuit) => {

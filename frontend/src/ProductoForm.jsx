@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "./firebase";
 import BuscadorProductos from "./components/BuscadorProductos";
+import GenerarEtiquetasPDF from "./components/GenerarEtiquetasPDF";
+
 import {
   actualizarProducto,
   eliminarProducto,
@@ -503,6 +505,10 @@ const ProductoForm = ({
           </button>
         </div>
       </form>
+      <div style={{ marginTop: "2rem", textAlign: "center" }}>
+        <GenerarEtiquetasPDF />
+      </div>
+
       <ToastContainer
         position="top-right"
         autoClose={3000}
