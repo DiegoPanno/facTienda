@@ -745,6 +745,7 @@ const FacturadorPanel = () => {
             datos={{
               cliente: {
                 nombre: cliente.nombre,
+                apellido: cliente.apellido || "",
                 tipoDoc: receptor.tipoDoc,
                 nroDoc: receptor.nroDoc,
               },
