@@ -11,42 +11,41 @@ export const guardarCliente = async (cliente, esFacturaC = false) => {
     }
 
     // 2. Manejo de documento según tipo de comprobante
-    if (esFacturaC) {
-      // Validación para Factura C (CUIT)
-      if (!cliente.cuit) {
-        throw new Error("El CUIT es un campo requerido para Factura C");
-      }
-      
-      // Limpieza del CUIT
-      cliente.cuit = cliente.cuit.toString().replace(/[^\d]/g, '');
-      
-      // Validar formato básico de CUIT (11 dígitos)
-      if (cliente.cuit.length !== 11) {
-        throw new Error("El CUIT debe contener exactamente 11 dígitos");
-      }
-      
-      // Validar prefijos válidos para CUIT
-      const prefijosValidos = ['20', '23', '24', '27', '30', '33', '34'];
-      const prefijo = cliente.cuit.substring(0, 2);
-      
-      if (!prefijosValidos.includes(prefijo)) {
-        throw new Error("El prefijo del CUIT no es válido");
-      }
-    } else {
-      // Validación para otros comprobantes (DNI)
-      if (!cliente.documento) {
-        // Permitir consumidor final con documento '0'
-        cliente.documento = '0';
-      } else {
-        // Limpieza del DNI
-        cliente.documento = cliente.documento.toString().replace(/[^\d]/g, '');
-        
-        // Validar DNI (8 dígitos o 0 para consumidor final)
-        if (cliente.documento !== '0' && cliente.documento.length !== 8) {
-          throw new Error("El DNI debe contener exactamente 8 dígitos (o 0 para consumidor final)");
-        }
-      }
+  if (esFacturaC) {
+  if (!cliente.cuit) {
+    throw new Error("El CUIT/DNI es un campo requerido para Factura C");
+  }
+  
+  // Limpieza del CUIT/DNI
+  cliente.cuit = cliente.cuit.toString().replace(/[^\d]/g, '');
+  
+  // Validar CUIT o DNI (11 o 8 dígitos), o 0 para consumidor final
+  if (!['11', '8', '1'].includes(cliente.cuit.length.toString())) {
+    throw new Error("El CUIT/DNI debe contener 11 dígitos (CUIT), 8 dígitos (DNI) o 0 para consumidor final");
+  }
+
+  // Si es CUIT (11 dígitos), validamos prefijos
+  if (cliente.cuit.length === 11) {
+    const prefijosValidos = ['20', '23', '24', '27', '30', '33', '34'];
+    const prefijo = cliente.cuit.substring(0, 2);
+    
+    if (!prefijosValidos.includes(prefijo)) {
+      throw new Error("El prefijo del CUIT no es válido");
     }
+  }
+} else {
+  // Validación para otros comprobantes (DNI)
+  if (!cliente.documento) {
+    cliente.documento = '0';
+  } else {
+    cliente.documento = cliente.documento.toString().replace(/[^\d]/g, '');
+    
+    if (!['0', '8'].includes(cliente.documento.length.toString())) {
+      throw new Error("El DNI debe contener 8 dígitos o 0 para consumidor final");
+    }
+  }
+}
+
 
     // 3. Preparar datos para Firebase
     const clienteParaGuardar = {

@@ -45,28 +45,25 @@ const ClientesForm = ({
 
     let doc = values.cuit.replace(/\D/g, "");
 
-    if (tipoDocumento === "Factura C") {
-      if (doc.length === 0) {
-        doc = "30111222";
-        values.nombre = values.nombre || "Consumidor Final";
-      } else if (doc.length !== 11) {
-        toast.error("❌ El CUIT debe contener exactamente 11 dígitos.", {
-          position: "top-center",
-          autoClose: 3000,
-          theme: "colored",
-        });
-        return;
-      }
-    } else {
-      if (![8, 1].includes(doc.length)) {
-        toast.error("❌ El DNI debe contener 8 dígitos o 0 para consumidor final.", {
-          position: "top-center",
-          autoClose: 3000,
-          theme: "colored",
-        });
-        return;
-      }
-    }
+  if (tipoDocumento === "Factura C") {
+  if (!['11', '8', '1'].includes(doc.length.toString())) {
+    toast.error("❌ El CUIT/DNI debe tener 11 dígitos (CUIT), 8 dígitos (DNI) o 0 (Consumidor Final).", {
+      position: "top-center",
+      autoClose: 3000,
+      theme: "colored",
+    });
+    return;
+  }
+} else {
+  if (![8, 1].includes(doc.length)) {
+    toast.error("❌ El DNI debe contener 8 dígitos o 0 para consumidor final.", {
+      position: "top-center",
+      autoClose: 3000,
+      theme: "colored",
+    });
+    return;
+  }
+}
 
     const clienteParaGuardar = {
       ...values,
