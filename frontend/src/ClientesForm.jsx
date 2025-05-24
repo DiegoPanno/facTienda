@@ -40,44 +40,39 @@ const ClientesForm = ({
     }
   }, [clienteEdit, tipoDocumento]);
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+ 
+ const handleSubmit = (e) => {
+  e.preventDefault();
 
-    let doc = values.cuit.replace(/\D/g, "");
+  let doc = values.cuit.replace(/\D/g, "");
 
-  if (tipoDocumento === "Factura C") {
+  // Aceptar sólo 11 (CUIT), 8 (DNI) o 1 dígito (0 consumidor final)
   if (!['11', '8', '1'].includes(doc.length.toString())) {
-    toast.error("❌ El CUIT/DNI debe tener 11 dígitos (CUIT), 8 dígitos (DNI) o 0 (Consumidor Final).", {
+    toast.error("❌ El CUIT o DNI debe tener 11 dígitos (CUIT), 8 dígitos (DNI) o 0 (Consumidor Final).", {
       position: "top-center",
       autoClose: 3000,
       theme: "colored",
     });
     return;
   }
-} else {
-  if (![8, 1].includes(doc.length)) {
-    toast.error("❌ El DNI debe contener 8 dígitos o 0 para consumidor final.", {
-      position: "top-center",
-      autoClose: 3000,
-      theme: "colored",
-    });
-    return;
-  }
-}
 
-    const clienteParaGuardar = {
-      ...values,
-      cuit: doc,
-    };
-
-    toast.success("✅ Cliente guardado correctamente", {
-      position: "top-center",
-      autoClose: 2500,
-      theme: "colored",
-    });
-
-    onClienteCreado(clienteParaGuardar);
+  const clienteParaGuardar = {
+    ...values,
+    cuit: doc,
+    documento: doc,
   };
+
+  console.log("Cliente para guardar:", clienteParaGuardar);
+
+  toast.success("✅ Cliente guardado correctamente", {
+    position: "top-center",
+    autoClose: 2500,
+    theme: "colored",
+  });
+
+  onClienteCreado(clienteParaGuardar);
+};
+
 
   return (
     <Paper elevation={3} sx={{ p: 3 }}>
@@ -103,40 +98,18 @@ const ClientesForm = ({
           margin="normal"
         />
 
-        {tipoDocumento === "Factura C" ? (
-          <TextField
-            label="CUIT (Requerido)"
-            value={values.cuit}
-            onChange={(e) => {
-              const value = e.target.value.replace(/\D/g, "");
-              let formatted = value;
-              if (value.length > 2) {
-                formatted = `${value.substr(0, 2)}-${value.substr(2)}`;
-              }
-              if (value.length > 10) {
-                formatted = `${formatted.substr(0, 11)}-${formatted.substr(11)}`;
-              }
-              setValues({ ...values, cuit: formatted });
-            }}
-            fullWidth
-            margin="normal"
-            required
-            helperText="Formato: XX-XXXXXXXX-X"
-          />
-        ) : (
-          <TextField
-            label="CUIT o DNI (sin guiones)"
-            value={values.cuit}
-            onChange={(e) => {
-              const value = e.target.value.replace(/\D/g, "");
-              setValues({ ...values, cuit: value.slice(0, 11) });
-            }}
-            fullWidth
-            margin="normal"
-            required
-            helperText="Ingrese 11 dígitos para CUIT, 8 para DNI o 0 para consumidor final"
-          />
-        )}
+        <TextField
+          label="CUIT o DNI (solo números)"
+          value={values.cuit}
+          onChange={(e) => {
+            const value = e.target.value.replace(/\D/g, "");
+            setValues({ ...values, cuit: value.slice(0, 11) });
+          }}
+          fullWidth
+          margin="normal"
+          required
+          helperText="Ingrese 11 dígitos para CUIT, 8 para DNI o 0 para consumidor final"
+        />
 
         <TextField
           label="Email"
