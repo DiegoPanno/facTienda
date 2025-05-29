@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
 import { doc, getDoc } from "firebase/firestore";
-import { db } from "./firebase";
+import { db, storage, ref, uploadBytes, getDownloadURL } from "./firebase";
 import BuscadorProductos from "./components/BuscadorProductos";
 import GenerarEtiquetasPDF from "./components/GenerarEtiquetasPDF";
-
 import {
   actualizarProducto,
   eliminarProducto,
@@ -32,6 +31,7 @@ const ProductoForm = ({
 
   const [isSaving, setIsSaving] = useState(false);
   const [productoExiste, setProductoExiste] = useState(false);
+  const [foto, setFoto] = useState(null);
 
   // Efecto para cargar datos del producto a editar
   useEffect(() => {
@@ -144,11 +144,31 @@ const ProductoForm = ({
       producto.precioBase,
       producto.margen
     );
+
+    // Guardar la imagen en Firebase Storage (si hay una nueva imagen cargada)
+    let urlImagen = producto.imagenUrl || "";
+    if (foto) {
+      try {
+        const storageRef = ref(storage, `productos/${foto.name}_${Date.now()}`);
+        await uploadBytes(storageRef, foto);
+        urlImagen = await getDownloadURL(storageRef);
+      } catch (error) {
+        console.error("Error al subir la imagen:", error);
+        toast.error("❌ Error al subir la imagen", {
+          position: "top-right",
+          autoClose: 4000,
+          theme: "colored",
+        });
+        return;
+      }
+    }
+
     const productoCompleto = {
       ...producto,
       precioVenta,
       ultimaActualizacion: new Date().toISOString(),
       stock: producto.stock ? parseInt(producto.stock) : 0,
+      imagenUrl: urlImagen, // Agregar la URL de la imagen
       // Agregar marca de tiempo de creación si es nuevo producto
       ...(!producto.id && { fechaCreacion: new Date().toISOString() }),
     };
@@ -158,10 +178,7 @@ const ProductoForm = ({
       let resultado;
 
       if (productoEdit || producto.id) {
-        // Operación de actualización o creación con ID específico
         resultado = await actualizarProducto(producto.id, productoCompleto);
-
-        // Feedback más específico
         if (resultado?.created) {
           toast.success("🆕 Producto creado con ID específico", {
             position: "top-right",
@@ -176,7 +193,6 @@ const ProductoForm = ({
           });
         }
       } else {
-        // Operación de creación con ID automático
         resultado = await agregarProducto(productoCompleto);
         toast.success("🆕 Producto agregado exitosamente", {
           position: "top-right",
@@ -185,7 +201,6 @@ const ProductoForm = ({
         });
       }
 
-      // Resetear el formulario
       setProducto({
         id: "",
         codigoBarras: "",
@@ -196,21 +211,19 @@ const ProductoForm = ({
         stock: "",
         categoria: "",
         proveedor: "",
+        imagenFile: null,
+        imagenUrl: "",
       });
 
-      // Notificar al componente padre para actualizar la lista
       if (onProductoGuardado) {
         onProductoGuardado();
       }
 
-      // Salir del modo edición si estamos editando
       if (productoEdit && setEditando) {
         setEditando(null);
       }
     } catch (error) {
       console.error("Error al guardar producto:", error);
-
-      // Mensajes de error más específicos
       let mensajeError = "Ocurrió un error al guardar el producto";
       if (error.code === "permission-denied") {
         mensajeError = "No tienes permisos para realizar esta acción";
@@ -457,6 +470,32 @@ const ProductoForm = ({
             />
           </div>
         </div>
+        <div>
+          <label>Foto del Producto</label>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => setFoto(e.target.files[0])}
+            style={{ width: "100%", padding: "8px" }}
+          />
+        </div>
+
+        {foto && (
+          <div>
+            <p>Previsualización:</p>
+            <img
+              src={URL.createObjectURL(foto)}
+              alt="Previsualización"
+              style={{
+                width: "120px",
+                height: "120px",
+                objectFit: "cover",
+                marginTop: "8px",
+                borderRadius: "4px",
+              }}
+            />
+          </div>
+        )}
 
         <div
           style={{
