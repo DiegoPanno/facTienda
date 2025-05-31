@@ -41,6 +41,7 @@ const FacturadorPanel = () => {
   const [idCaja, setIdCaja] = useState(null);
   const [ptoVtaAsociado, setPtoVtaAsociado] = useState("");
   const [nroAsociado, setNroAsociado] = useState("");
+  const [numeroRemitoReal, setNumeroRemitoReal] = useState("");
 
   const getSubtotal = () => total / 1.21;
   const getIVA = () => total - getSubtotal();
@@ -172,48 +173,45 @@ const FacturadorPanel = () => {
   };
 
   // Generar PDF del comprobante
-  const generarPDF = async () => {
-    if (!comprobanteRef.current || carrito.length === 0) return;
+ const generarPDF = async (numeroRemito) => { 
+  if (!comprobanteRef.current || carrito.length === 0) return;
 
-    try {
-      const canvas = await html2canvas(comprobanteRef.current, {
-        scale: 2,
-        logging: false,
-        useCORS: true,
-      });
+  try {
+    const canvas = await html2canvas(comprobanteRef.current, {
+      scale: 2,
+      logging: false,
+      useCORS: true,
+    });
 
-      const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm" });
-      const imgProps = pdf.getImageProperties(imgData);
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+    const imgData = canvas.toDataURL("image/png");
+    const pdf = new jsPDF({ orientation: "portrait", unit: "mm" });
+    const imgProps = pdf.getImageProperties(imgData);
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
 
-      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+    pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
 
-      const nombreArchivo = `${tipoDocumento || "Comprobante"}_${new Date()
-        .toISOString()
-        .slice(0, 10)}.pdf`;
-      pdf.save(nombreArchivo);
-      toast.success(
-        `📄 ${tipoDocumento || "Comprobante"} generado exitosamente`,
-        {
-          position: "top-right",
-          autoClose: 3000,
-          theme: "colored",
-        }
-      );
+    // ✅ Ahora usamos el numeroRemito para nombrar el archivo
+    const nombreArchivo = `${tipoDocumento || "Comprobante"}_${numeroRemito || new Date().toISOString().slice(0, 10)}.pdf`;
+    pdf.save(nombreArchivo);
 
-      return pdf.output("blob"); // Retornamos el blob para usar en handleCobrar
-    } catch (error) {
-      console.error("Error al generar PDF:", error);
-      toast.error("❌ Error al generar el documento", {
-        position: "top-right",
-        autoClose: 4000,
-        theme: "colored",
-      });
-      throw error;
-    }
-  };
+    toast.success(`📄 ${tipoDocumento || "Comprobante"} generado exitosamente`, {
+      position: "top-right",
+      autoClose: 3000,
+      theme: "colored",
+    });
+
+    return pdf.output("blob"); // Retornamos el blob para usar en handleCobrar
+  } catch (error) {
+    console.error("Error al generar PDF:", error);
+    toast.error("❌ Error al generar el documento", {
+      position: "top-right",
+      autoClose: 4000,
+      theme: "colored",
+    });
+    throw error;
+  }
+};
 
   const handleCobrar = async () => {
     if (isSubmitting) return;
@@ -242,10 +240,12 @@ const FacturadorPanel = () => {
     try {
       setLoading(true);
       setError(null);
-      await generarPDF();
+      
 
       if (tipoDocumento === "Remito") {
         const nroRemito = await obtenerProximoNumeroRemito();
+        setNumeroRemitoReal(`0001-${nroRemito.toString().padStart(8, "0")}`);
+
         const descripcion =
           `Remito nro #${nroRemito}` +
           (clienteSeleccionado?.nombre
@@ -269,19 +269,23 @@ const FacturadorPanel = () => {
 
         setSuccess(`✅ Remito #${nroRemito} registrado correctamente`);
         setCobroRealizado(true);
+        await generarPDF(nroRemito); 
         const htmlRemito = renderToStaticMarkup(
-  <TicketRemito
-    datos={{
-      cliente: clienteSeleccionado || { nombre: "Consumidor Final", nroDoc: "0" },
-      productos: carrito,
-      fecha: new Date().toLocaleDateString("es-AR"),
-      nroRemito: `0001-${nroRemito.toString().padStart(8, "0")}`,
-    }}
-  />
-);
+          <TicketRemito
+            datos={{
+              cliente: clienteSeleccionado || {
+                nombre: "Consumidor Final",
+                nroDoc: "0",
+              },
+              productos: carrito,
+              fecha: new Date().toLocaleDateString("es-AR"),
+              nroRemito: `0001-${nroRemito.toString().padStart(8, "0")}`,
+            }}
+          />
+        );
 
-const ticketRemitoWindow = window.open("", "_blank");
-ticketRemitoWindow.document.write(`
+        const ticketRemitoWindow = window.open("", "_blank");
+        ticketRemitoWindow.document.write(`
   <html>
     <head><title>Remito</title></head>
     <body>${htmlRemito}</body>
@@ -293,10 +297,7 @@ ticketRemitoWindow.document.write(`
     </script>
   </html>
 `);
-ticketRemitoWindow.document.close();
-
-
-
+        ticketRemitoWindow.document.close();
 
         // ... imprimir ticket ...
 
@@ -387,10 +388,13 @@ ticketRemitoWindow.document.close();
           <h2 style={{ margin: 0 }}>{tipoDocumento || "COMPROBANTE"}</h2>
           <p style={{ margin: "5px 0" }}>
             N°:{" "}
-            {Math.floor(Math.random() * 10000)
-              .toString()
-              .padStart(8, "0")}
+            {tipoDocumento === "Remito" && numeroRemitoReal
+              ? numeroRemitoReal
+              : Math.floor(Math.random() * 10000)
+                  .toString()
+                  .padStart(8, "0")}
           </p>
+
           <p style={{ margin: "5px 0" }}>
             Fecha: {new Date().toLocaleDateString("es-AR")}
           </p>
@@ -735,26 +739,26 @@ ticketRemitoWindow.document.close();
           });
 
           const htmlTicket = renderToStaticMarkup(
-  <TicketFacturaC
-    datos={{
-      cliente: {
-        nombre: cliente.nombre,
-        tipoDoc: receptor.tipoDoc,
-        nroDoc: receptor.nroDoc,
-      },
-      productos: carrito,
-      importeTotal: totalCalculado,
-      importeNeto: subtotalCalculado,
-      fecha: new Date().toLocaleDateString("es-AR"),
-      CAE: resultado.cae,
-      CAEVto: resultado.vencimientoCae,
-      nroFacturaCompleto: numeroFacturaFormateado,
-    }}
-  />
-);
+            <TicketFacturaC
+              datos={{
+                cliente: {
+                  nombre: cliente.nombre,
+                  tipoDoc: receptor.tipoDoc,
+                  nroDoc: receptor.nroDoc,
+                },
+                productos: carrito,
+                importeTotal: totalCalculado,
+                importeNeto: subtotalCalculado,
+                fecha: new Date().toLocaleDateString("es-AR"),
+                CAE: resultado.cae,
+                CAEVto: resultado.vencimientoCae,
+                nroFacturaCompleto: numeroFacturaFormateado,
+              }}
+            />
+          );
 
-const ticketWindow = window.open("", "_blank");
-ticketWindow.document.write(`
+          const ticketWindow = window.open("", "_blank");
+          ticketWindow.document.write(`
   <html>
     <head><title>Ticket Factura C</title></head>
     <body>${htmlTicket}</body>
@@ -766,8 +770,7 @@ ticketWindow.document.write(`
     </script>
   </html>
 `);
-ticketWindow.document.close();
-
+          ticketWindow.document.close();
 
           // ... imprimir ticket ...
 
