@@ -216,47 +216,115 @@ const FacturadorPanel = () => {
   };
 
   const handleCobrar = async () => {
-  if (isSubmitting) return;
-  setIsSubmitting(true);
+    if (isSubmitting) return;
+    setIsSubmitting(true);
 
-  if (carrito.length === 0) {
-    toast.error("❌ No hay productos en el carrito", {
-      autoClose: 3000,
-      position: "top-right",
-      theme: "colored",
-    });
-    setIsSubmitting(false);
-    return;
-  }
+    if (carrito.length === 0) {
+      toast.error("❌ No hay productos en el carrito", {
+        autoClose: 3000,
+        position: "top-right",
+        theme: "colored",
+      });
+      setIsSubmitting(false);
+      return;
+    }
 
-  if (!cajaAbierta?.id) {
-    toast.error("⚠️ No hay una caja abierta. Abrí la caja primero.", {
-      autoClose: 3000,
-      position: "top-right",
-      theme: "colored",
-    });
-    setIsSubmitting(false);
-    return;
-  }
+    if (!cajaAbierta?.id) {
+      toast.error("⚠️ No hay una caja abierta. Abrí la caja primero.", {
+        autoClose: 3000,
+        position: "top-right",
+        theme: "colored",
+      });
+      setIsSubmitting(false);
+      return;
+    }
 
-  try {
-    setLoading(true);
-    setError(null);
-    await generarPDF();
+    try {
+      setLoading(true);
+      setError(null);
+      await generarPDF();
 
-    if (tipoDocumento === "Remito") {
-      const nroRemito = await obtenerProximoNumeroRemito();
-      const descripcion = `Remito nro #${nroRemito}` +
-        (clienteSeleccionado?.nombre ? ` - Cliente: ${clienteSeleccionado.nombre}` : "");
+      if (tipoDocumento === "Remito") {
+        const nroRemito = await obtenerProximoNumeroRemito();
+        const descripcion =
+          `Remito nro #${nroRemito}` +
+          (clienteSeleccionado?.nombre
+            ? ` - Cliente: ${clienteSeleccionado.nombre}`
+            : "");
 
-      await registrarMovimiento(cajaAbierta.id, {
+        await registrarMovimiento(cajaAbierta.id, {
+          tipo: "ingreso",
+          monto: total,
+          descripcion,
+          formaPago: medioPago || "efectivo",
+          fecha: new Date().toISOString(),
+          usuario: { nombre: "Admin", uid: "local" },
+        });
+
+        // ✅ Descontar stock
+        for (const item of carrito) {
+          const nuevoStock = (item.stock || 0) - item.cantidad;
+          await actualizarProducto(item.id, { stock: nuevoStock });
+        }
+
+        setSuccess(`✅ Remito #${nroRemito} registrado correctamente`);
+        setCobroRealizado(true);
+        const htmlRemito = renderToStaticMarkup(
+  <TicketRemito
+    datos={{
+      cliente: clienteSeleccionado || { nombre: "Consumidor Final", nroDoc: "0" },
+      productos: carrito,
+      fecha: new Date().toLocaleDateString("es-AR"),
+      nroRemito: `0001-${nroRemito.toString().padStart(8, "0")}`,
+    }}
+  />
+);
+
+const ticketRemitoWindow = window.open("", "_blank");
+ticketRemitoWindow.document.write(`
+  <html>
+    <head><title>Remito</title></head>
+    <body>${htmlRemito}</body>
+    <script>
+      window.onload = function() {
+        window.print();
+        setTimeout(() => window.close(), 500);
+      };
+    </script>
+  </html>
+`);
+ticketRemitoWindow.document.close();
+
+
+
+
+        // ... imprimir ticket ...
+
+        setCarrito([]);
+        setTotal(0);
+        return;
+      }
+
+      const movimiento = {
         tipo: "ingreso",
         monto: total,
-        descripcion,
+        descripcion: `Venta ${tipoDocumento || "Recibo"} ${
+          clienteSeleccionado?.nombre || "Consumidor Final"
+        }`,
         formaPago: medioPago || "efectivo",
-        fecha: new Date().toISOString(),
-        usuario: { nombre: "Admin", uid: "local" },
-      });
+        productos: carrito.map((item) => ({
+          id: item.id,
+          nombre: item.titulo,
+          cantidad: item.cantidad,
+          precio: item.precioVenta,
+          subtotal: item.precioVenta * item.cantidad,
+        })),
+        iva: getIVA(),
+        totalConIva: total,
+        usuario: { nombre: "Administrador", uid: "admin-001" },
+      };
+
+      await registrarMovimiento(cajaAbierta.id, movimiento);
 
       // ✅ Descontar stock
       for (const item of carrito) {
@@ -264,55 +332,18 @@ const FacturadorPanel = () => {
         await actualizarProducto(item.id, { stock: nuevoStock });
       }
 
-      setSuccess(`✅ Remito #${nroRemito} registrado correctamente`);
-      setCobroRealizado(true);
-
-      // ... imprimir ticket ...
-
       setCarrito([]);
       setTotal(0);
-      return;
+      setCobroRealizado(true);
+      setSuccess("✅ Venta registrada correctamente en caja");
+    } catch (error) {
+      console.error("Error al registrar cobro:", error);
+      setError(`❌ Error al registrar cobro: ${error.message}`);
+    } finally {
+      setLoading(false);
+      setIsSubmitting(false);
     }
-
-    const movimiento = {
-      tipo: "ingreso",
-      monto: total,
-      descripcion: `Venta ${tipoDocumento || "Recibo"} ${clienteSeleccionado?.nombre || "Consumidor Final"}`,
-      formaPago: medioPago || "efectivo",
-      productos: carrito.map((item) => ({
-        id: item.id,
-        nombre: item.titulo,
-        cantidad: item.cantidad,
-        precio: item.precioVenta,
-        subtotal: item.precioVenta * item.cantidad,
-      })),
-      iva: getIVA(),
-      totalConIva: total,
-      usuario: { nombre: "Administrador", uid: "admin-001" },
-    };
-
-    await registrarMovimiento(cajaAbierta.id, movimiento);
-
-    // ✅ Descontar stock
-    for (const item of carrito) {
-      const nuevoStock = (item.stock || 0) - item.cantidad;
-      await actualizarProducto(item.id, { stock: nuevoStock });
-    }
-
-    setCarrito([]);
-    setTotal(0);
-    setCobroRealizado(true);
-    setSuccess("✅ Venta registrada correctamente en caja");
-
-  } catch (error) {
-    console.error("Error al registrar cobro:", error);
-    setError(`❌ Error al registrar cobro: ${error.message}`);
-  } finally {
-    setLoading(false);
-    setIsSubmitting(false);
-  }
-};
-
+  };
 
   // Componente de vista previa del comprobante
   const VistaPreviaRecibo = ({
@@ -633,96 +664,140 @@ const FacturadorPanel = () => {
   }
 
   // Función para enviar la factura a AFIP
- async function handleEnviarAFIP() {
-  try {
-    if (tipoDocumento === "Factura C") {
-      let cliente = clienteSeleccionado
-        ? { ...clienteSeleccionado }
-        : { nombre: "Consumidor Final", cuit: "0" };
+  async function handleEnviarAFIP() {
+    try {
+      if (tipoDocumento === "Factura C") {
+        let cliente = clienteSeleccionado
+          ? { ...clienteSeleccionado }
+          : { nombre: "Consumidor Final", cuit: "0" };
 
-      if (cliente.cuit !== "0" && !cliente.cuit) {
-        toast.warning("⚠️ Seleccione un cliente válido o utilice CUIT 0 para Consumidor Final");
-        return;
-      }
-
-      const receptor = prepararDatosReceptor(cliente, total);
-      const items = carrito.map((prod, index) => ({
-        codigo: prod.id || index + 1,
-        descripcion: prod.titulo,
-        cantidad: prod.cantidad,
-        precioUnitario: prod.precioVenta,
-        subtotal: prod.cantidad * prod.precioVenta,
-      }));
-
-      const totalCalculado = parseFloat(items.reduce((acc, item) => acc + item.subtotal, 0).toFixed(2));
-      const subtotalCalculado = parseFloat(getSubtotal().toFixed(2));
-
-      const response = await api.post("/api/afip/emitir-factura-c", {
-        cliente: receptor,
-        importeTotal: totalCalculado,
-        importeNeto: subtotalCalculado,
-        fecha: new Date().toISOString().slice(0, 10).replace(/-/g, ""),
-      });
-
-      const resultado = response.data?.data || response.data;
-      const nroFactura = resultado.numeroFactura || "0000-00000000";
-      const nroFacturaSplit = nroFactura.split("-");
-      const ptoVtaFactura = nroFacturaSplit[0] || "0000";
-      const nroCbte = nroFacturaSplit[1] || "00000000";
-      const numeroFacturaFormateado = `${ptoVtaFactura.padStart(4, "0")}-${nroCbte.padStart(8, "0")}`;
-
-      if (resultado?.Resultado === "A") {
-        await registrarMovimiento(idCaja, {
-          tipo: "ingreso",
-          monto: total,
-          descripcion: `Pago de factura ${numeroFacturaFormateado}`,
-          formaPago: medioPago || "efectivo",
-          fecha: new Date().toISOString(),
-          usuario: { nombre: "Admin", uid: "local" },
-        });
-
-        // ✅ Descontar stock
-        for (const item of carrito) {
-          const nuevoStock = (item.stock || 0) - item.cantidad;
-          await actualizarProducto(item.id, { stock: nuevoStock });
+        if (cliente.cuit !== "0" && !cliente.cuit) {
+          toast.warning(
+            "⚠️ Seleccione un cliente válido o utilice CUIT 0 para Consumidor Final"
+          );
+          return;
         }
 
-        setCaeInfo({
-          cae: resultado.cae || "Sin CAE",
-          vencimiento: resultado.vencimientoCae || "No especificado",
-          numeroFactura: numeroFacturaFormateado,
-          numero: nroCbte.padStart(8, "0"),
-          fecha: new Date().toLocaleDateString("es-AR"),
-          archivoPdf: resultado.archivoPdf || "",
+        const receptor = prepararDatosReceptor(cliente, total);
+        const items = carrito.map((prod, index) => ({
+          codigo: prod.id || index + 1,
+          descripcion: prod.titulo,
+          cantidad: prod.cantidad,
+          precioUnitario: prod.precioVenta,
+          subtotal: prod.cantidad * prod.precioVenta,
+        }));
+
+        const totalCalculado = parseFloat(
+          items.reduce((acc, item) => acc + item.subtotal, 0).toFixed(2)
+        );
+        const subtotalCalculado = parseFloat(getSubtotal().toFixed(2));
+
+        const response = await api.post("/api/afip/emitir-factura-c", {
+          cliente: receptor,
+          importeTotal: totalCalculado,
+          importeNeto: subtotalCalculado,
+          fecha: new Date().toISOString().slice(0, 10).replace(/-/g, ""),
         });
 
-        // ... imprimir ticket ...
+        const resultado = response.data?.data || response.data;
+        const nroFactura = resultado.numeroFactura || "0000-00000000";
+        const nroFacturaSplit = nroFactura.split("-");
+        const ptoVtaFactura = nroFacturaSplit[0] || "0000";
+        const nroCbte = nroFacturaSplit[1] || "00000000";
+        const numeroFacturaFormateado = `${ptoVtaFactura.padStart(
+          4,
+          "0"
+        )}-${nroCbte.padStart(8, "0")}`;
 
-        toast.success(`✅ Factura emitida. N°: ${numeroFacturaFormateado} - CAE: ${resultado.cae}`);
+        if (resultado?.Resultado === "A") {
+          await registrarMovimiento(idCaja, {
+            tipo: "ingreso",
+            monto: total,
+            descripcion: `Pago de factura ${numeroFacturaFormateado}`,
+            formaPago: medioPago || "efectivo",
+            fecha: new Date().toISOString(),
+            usuario: { nombre: "Admin", uid: "local" },
+          });
+
+          // ✅ Descontar stock
+          for (const item of carrito) {
+            const nuevoStock = (item.stock || 0) - item.cantidad;
+            await actualizarProducto(item.id, { stock: nuevoStock });
+          }
+
+          setCaeInfo({
+            cae: resultado.cae || "Sin CAE",
+            vencimiento: resultado.vencimientoCae || "No especificado",
+            numeroFactura: numeroFacturaFormateado,
+            numero: nroCbte.padStart(8, "0"),
+            fecha: new Date().toLocaleDateString("es-AR"),
+            archivoPdf: resultado.archivoPdf || "",
+          });
+
+          const htmlTicket = renderToStaticMarkup(
+  <TicketFacturaC
+    datos={{
+      cliente: {
+        nombre: cliente.nombre,
+        tipoDoc: receptor.tipoDoc,
+        nroDoc: receptor.nroDoc,
+      },
+      productos: carrito,
+      importeTotal: totalCalculado,
+      importeNeto: subtotalCalculado,
+      fecha: new Date().toLocaleDateString("es-AR"),
+      CAE: resultado.cae,
+      CAEVto: resultado.vencimientoCae,
+      nroFacturaCompleto: numeroFacturaFormateado,
+    }}
+  />
+);
+
+const ticketWindow = window.open("", "_blank");
+ticketWindow.document.write(`
+  <html>
+    <head><title>Ticket Factura C</title></head>
+    <body>${htmlTicket}</body>
+    <script>
+      window.onload = function() {
+        window.print();
+        setTimeout(() => window.close(), 500);
+      };
+    </script>
+  </html>
+`);
+ticketWindow.document.close();
+
+
+          // ... imprimir ticket ...
+
+          toast.success(
+            `✅ Factura emitida. N°: ${numeroFacturaFormateado} - CAE: ${resultado.cae}`
+          );
+        } else {
+          const mensajeError =
+            resultado?.Observaciones?.Obs?.[0]?.Msg ||
+            "Error al emitir factura";
+          toast.error(`❌ ${mensajeError}`);
+          return;
+        }
+      }
+
+      if (tipoDocumento === "Nota de Crédito C") {
+        // ... lógica de NC sin actualización de stock ...
+      }
+    } catch (error) {
+      console.error("Error en handleEnviarAFIP:", error);
+
+      if (error.code === "ECONNABORTED") {
+        toast.error("❌ Tiempo de espera agotado. AFIP no respondió a tiempo.");
+      } else if (error.response?.status === 500) {
+        toast.error("❌ Error interno del servidor al emitir el comprobante.");
       } else {
-        const mensajeError = resultado?.Observaciones?.Obs?.[0]?.Msg || "Error al emitir factura";
-        toast.error(`❌ ${mensajeError}`);
-        return;
+        toast.error(error.message || "❌ Error al enviar comprobante a AFIP");
       }
     }
-
-    if (tipoDocumento === "Nota de Crédito C") {
-      // ... lógica de NC sin actualización de stock ...
-    }
-  } catch (error) {
-    console.error("Error en handleEnviarAFIP:", error);
-
-    if (error.code === "ECONNABORTED") {
-      toast.error("❌ Tiempo de espera agotado. AFIP no respondió a tiempo.");
-    } else if (error.response?.status === 500) {
-      toast.error("❌ Error interno del servidor al emitir el comprobante.");
-    } else {
-      toast.error(error.message || "❌ Error al enviar comprobante a AFIP");
-    }
   }
-}
-
-
 
   // Función auxiliar para validar CUIT
   const validarCUIT = (cuit) => {
