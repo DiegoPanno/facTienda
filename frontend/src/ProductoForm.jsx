@@ -1,9 +1,9 @@
-// Al inicio del archivo (importaciones)
 import { useState, useEffect } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "./firebase";
 import BuscadorProductos from "./components/BuscadorProductos";
 import GenerarEtiquetasPDF from "./components/GenerarEtiquetasPDF";
+
 import {
   actualizarProducto,
   eliminarProducto,
@@ -28,7 +28,7 @@ const ProductoForm = ({
     stock: "",
     categoria: "",
     proveedor: "",
-    imagenNombre: "", // Cambiamos a solo el nombre de la imagen
+    imagenUrl: "", // <--- Nuevo campo para la URL de la imagen
   });
 
   const [isSaving, setIsSaving] = useState(false);
@@ -46,17 +46,10 @@ const ProductoForm = ({
         stock: "",
         categoria: "",
         proveedor: "",
-        imagenNombre: "",
+        imagenUrl: "",
       });
       setProductoExiste(false);
       return;
-    }
-
-    // Extraer solo el nombre de la imagen si viene una URL completa
-    let nombreImagen = "";
-    if (productoEdit.imagenUrl) {
-      const partes = productoEdit.imagenUrl.split("/");
-      nombreImagen = partes[partes.length - 1];
     }
 
     setProducto({
@@ -69,7 +62,7 @@ const ProductoForm = ({
       stock: productoEdit.stock || "",
       categoria: productoEdit.categoria || "",
       proveedor: productoEdit.proveedor || "",
-      imagenNombre: nombreImagen,
+      imagenUrl: productoEdit.imagenUrl || "",
     });
     setProductoExiste(true);
   }, [productoEdit]);
@@ -125,17 +118,11 @@ const ProductoForm = ({
     }
 
     const precioVenta = calcularPrecioVenta(producto.precioBase, producto.margen);
-
-    // Construir la URL de la imagen automáticamente
-    const baseURL = "https://github.com/DiegoPanno/facTienda/raw/main/frontend/public/productos-img/";
-    const urlImagen = producto.imagenNombre ? baseURL + producto.imagenNombre : "";
-
     const productoCompleto = {
       ...producto,
       precioVenta,
       ultimaActualizacion: new Date().toISOString(),
       stock: producto.stock ? parseInt(producto.stock) : 0,
-      imagenUrl: urlImagen,
       ...(!producto.id && { fechaCreacion: new Date().toISOString() }),
     };
 
@@ -169,7 +156,7 @@ const ProductoForm = ({
         stock: "",
         categoria: "",
         proveedor: "",
-        imagenNombre: "",
+        imagenUrl: "",
       });
 
       if (onProductoGuardado) onProductoGuardado();
@@ -215,7 +202,7 @@ const ProductoForm = ({
         stock: "",
         categoria: "",
         proveedor: "",
-        imagenNombre: "",
+        imagenUrl: "",
       });
 
       if (onProductoEliminado) onProductoEliminado();
@@ -243,33 +230,88 @@ const ProductoForm = ({
         }}
       />
 
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem", padding: "20px", border: "1px solid #ddd", borderRadius: "8px", backgroundColor: "#fff" }}>
-        {/* Otros campos... */}
+      {producto.id && (
+        <div style={{
+          color: productoExiste ? "green" : "orange",
+          margin: "10px 0",
+          padding: "10px",
+          backgroundColor: "#f5f5f5",
+          borderRadius: "4px",
+          borderLeft: `4px solid ${productoExiste ? "green" : "orange"}`,
+        }}>
+          {productoExiste
+            ? "✔ Este producto ya existe y será actualizado"
+            : "⚠ Este ID no existe, se creará un nuevo producto"}
+        </div>
+      )}
 
+      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem", padding: "20px", border: "1px solid #ddd", borderRadius: "8px", backgroundColor: "#fff" }}>
         <div>
-          <label>Nombre de la Imagen (sin la URL)</label>
-          <input
-            type="text"
-            name="imagenNombre"
-            value={producto.imagenNombre}
-            onChange={handleChange}
-            placeholder="Ejemplo: yogurt-lemon.jpeg"
-            style={{ width: "100%", padding: "8px" }}
-          />
+          <label>ID del Producto*</label>
+          <input type="text" name="id" value={producto.id} onChange={handleChange} placeholder="ID único del producto" required disabled={!!productoEdit} style={{ width: "100%", padding: "8px" }} />
         </div>
 
-        {producto.imagenNombre && (
+        <div>
+          <label>Código de Barras</label>
+          <input type="text" name="codigoBarras" value={producto.codigoBarras} onChange={handleChange} placeholder="Código de barras (opcional)" style={{ width: "100%", padding: "8px" }} />
+        </div>
+
+        <div>
+          <label>Nombre del Producto*</label>
+          <input type="text" name="titulo" value={producto.titulo} onChange={handleChange} placeholder="Nombre descriptivo del producto" required style={{ width: "100%", padding: "8px" }} />
+        </div>
+
+        <div>
+          <label>Descripción</label>
+          <textarea name="descripcion" value={producto.descripcion} onChange={handleChange} placeholder="Descripción detallada del producto" rows="3" style={{ width: "100%", padding: "8px" }} />
+        </div>
+
+        <div>
+          <label>URL de la Imagen</label>
+          <input type="text" name="imagenUrl" value={producto.imagenUrl} onChange={handleChange} placeholder="https://..." style={{ width: "100%", padding: "8px" }} />
+        </div>
+
+        {producto.imagenUrl && (
           <div>
             <p>Previsualización:</p>
-            <img
-              src={`https://github.com/DiegoPanno/facTienda/raw/main/frontend/public/productos-img/${producto.imagenNombre}`}
-              alt="Previsualización"
-              style={{ width: "120px", height: "120px", objectFit: "cover", marginTop: "8px", borderRadius: "4px" }}
-            />
+            <img src={producto.imagenUrl} alt="Previsualización" style={{ width: "120px", height: "120px", objectFit: "cover", marginTop: "8px", borderRadius: "4px" }} />
           </div>
         )}
 
-        {/* Botones y demás campos */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+          <div>
+            <label>Precio Base*</label>
+            <input type="number" name="precioBase" value={producto.precioBase} onChange={handleChange} placeholder="Precio de costo" required min="0" step="0.01" style={{ width: "100%", padding: "8px" }} />
+          </div>
+
+          <div>
+            <label>Margen de Ganancia (%)*</label>
+            <input type="number" name="margen" value={producto.margen} onChange={handleChange} placeholder="Porcentaje de ganancia" required min="0" step="0.1" style={{ width: "100%", padding: "8px" }} />
+          </div>
+        </div>
+
+        <div>
+          <label>Precio de Venta</label>
+          <input type="text" value={precioVenta ? `$${precioVenta}` : ""} readOnly style={{ width: "100%", padding: "8px", backgroundColor: "#f0f0f0", fontWeight: "bold" }} />
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
+          <div>
+            <label>Stock Disponible</label>
+            <input type="number" name="stock" value={producto.stock} onChange={handleChange} placeholder="Cantidad en stock" min="0" style={{ width: "100%", padding: "8px" }} />
+          </div>
+
+          <div>
+            <label>Categoría</label>
+            <input type="text" name="categoria" value={producto.categoria} onChange={handleChange} placeholder="Categoría del producto" style={{ width: "100%", padding: "8px" }} />
+          </div>
+
+          <div>
+            <label>Proveedor</label>
+            <input type="text" name="proveedor" value={producto.proveedor} onChange={handleChange} placeholder="Proveedor principal" style={{ width: "100%", padding: "8px" }} />
+          </div>
+        </div>
+
         <div style={{ display: "flex", gap: "1rem", marginTop: "1.5rem", justifyContent: "flex-end" }}>
           {producto.id && (
             <button type="button" onClick={handleEliminar} disabled={isSaving} style={{ padding: "10px 15px", backgroundColor: "#ffebee", color: "#c62828", border: "1px solid #ef9a9a", borderRadius: "4px", cursor: "pointer" }}>
