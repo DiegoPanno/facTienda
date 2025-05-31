@@ -28,7 +28,7 @@ const ProductoForm = ({
     stock: "",
     categoria: "",
     proveedor: "",
-    imagenUrl: "", // <--- Nuevo campo para la URL de la imagen
+    imagenUrl: "", // Ahora solo el nombre de la imagen (ej: yogurt-lemon.jpeg)
   });
 
   const [isSaving, setIsSaving] = useState(false);
@@ -52,6 +52,13 @@ const ProductoForm = ({
       return;
     }
 
+    // Si la URL ya es completa, extraer solo el nombre
+    let nombreImagen = "";
+    if (productoEdit.imagenUrl) {
+      const partes = productoEdit.imagenUrl.split("/");
+      nombreImagen = partes[partes.length - 1];
+    }
+
     setProducto({
       id: productoEdit.id || "",
       codigoBarras: productoEdit.codigoBarras || "",
@@ -62,7 +69,7 @@ const ProductoForm = ({
       stock: productoEdit.stock || "",
       categoria: productoEdit.categoria || "",
       proveedor: productoEdit.proveedor || "",
-      imagenUrl: productoEdit.imagenUrl || "",
+      imagenUrl: nombreImagen || "",
     });
     setProductoExiste(true);
   }, [productoEdit]);
@@ -118,8 +125,14 @@ const ProductoForm = ({
     }
 
     const precioVenta = calcularPrecioVenta(producto.precioBase, producto.margen);
+
+    // Construir la URL de la imagen automáticamente
+    const baseURL = "https://github.com/DiegoPanno/facTienda/raw/main/frontend/public/productos-img/";
+    const urlImagen = producto.imagenUrl ? baseURL + producto.imagenUrl : "";
+
     const productoCompleto = {
       ...producto,
+      imagenUrl: urlImagen,
       precioVenta,
       ultimaActualizacion: new Date().toISOString(),
       stock: producto.stock ? parseInt(producto.stock) : 0,
@@ -267,14 +280,14 @@ const ProductoForm = ({
         </div>
 
         <div>
-          <label>URL de la Imagen</label>
-          <input type="text" name="imagenUrl" value={producto.imagenUrl} onChange={handleChange} placeholder="https://..." style={{ width: "100%", padding: "8px" }} />
+          <label>Nombre de la Imagen (solo nombre, sin la URL)</label>
+          <input type="text" name="imagenUrl" value={producto.imagenUrl} onChange={handleChange} placeholder="Ejemplo: yogurt-lemon.jpeg" style={{ width: "100%", padding: "8px" }} />
         </div>
 
         {producto.imagenUrl && (
           <div>
             <p>Previsualización:</p>
-            <img src={producto.imagenUrl} alt="Previsualización" style={{ width: "120px", height: "120px", objectFit: "cover", marginTop: "8px", borderRadius: "4px" }} />
+            <img src={`https://github.com/DiegoPanno/facTienda/raw/main/frontend/public/productos-img/${producto.imagenUrl}`} alt="Previsualización" style={{ width: "120px", height: "120px", objectFit: "cover", marginTop: "8px", borderRadius: "4px" }} />
           </div>
         )}
 
