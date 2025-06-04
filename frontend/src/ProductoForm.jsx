@@ -54,10 +54,16 @@ const ProductoForm = ({
 
     // Si la URL ya es completa, extraer solo el nombre
     let nombreImagen = "";
-    if (productoEdit.imagenUrl) {
-      const partes = productoEdit.imagenUrl.split("/");
-      nombreImagen = partes[partes.length - 1];
-    }
+if (productoEdit.imagenUrl) {
+  const baseURL = "https://github.com/DiegoPanno/facTienda/raw/main/frontend/public/productos-img/";
+  nombreImagen = productoEdit.imagenUrl.replaceAll(baseURL, "");
+
+  if (nombreImagen.includes("/")) {
+    const partes = nombreImagen.split("/");
+    nombreImagen = partes[partes.length - 1];
+  }
+}
+
 
     setProducto({
       id: productoEdit.id || "",
@@ -128,9 +134,17 @@ const ProductoForm = ({
 
     // Construir la URL de la imagen automáticamente
     const baseURL = "https://github.com/DiegoPanno/facTienda/raw/main/frontend/public/productos-img/";
-const urlImagen = producto.imagenUrl.startsWith("http")
-  ? producto.imagenUrl
-  : baseURL + producto.imagenUrl;
+
+// Limpiar duplicaciones si ya está incluida la URL base
+let imagenLimpia = producto.imagenUrl?.replaceAll(baseURL, "") || "";
+
+// Si aún contiene una URL completa, extraer solo el nombre
+if (imagenLimpia.includes("/")) {
+  const partes = imagenLimpia.split("/");
+  imagenLimpia = partes[partes.length - 1];
+}
+
+const urlImagen = imagenLimpia ? baseURL + imagenLimpia : "";
 
     const productoCompleto = {
       ...producto,
