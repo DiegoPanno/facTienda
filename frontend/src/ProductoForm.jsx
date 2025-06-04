@@ -128,7 +128,9 @@ const ProductoForm = ({
 
     // Construir la URL de la imagen automáticamente
     const baseURL = "https://github.com/DiegoPanno/facTienda/raw/main/frontend/public/productos-img/";
-    const urlImagen = producto.imagenUrl ? baseURL + producto.imagenUrl : "";
+const urlImagen = producto.imagenUrl.startsWith("http")
+  ? producto.imagenUrl
+  : baseURL + producto.imagenUrl;
 
     const productoCompleto = {
       ...producto,
