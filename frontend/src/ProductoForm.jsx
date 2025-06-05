@@ -34,51 +34,56 @@ const ProductoForm = ({
   const [isSaving, setIsSaving] = useState(false);
   const [productoExiste, setProductoExiste] = useState(false);
 
-  useEffect(() => {
-    if (!productoEdit) {
-      setProducto({
-        id: "",
-        codigoBarras: "",
-        titulo: "",
-        descripcion: "",
-        precioBase: "",
-        margen: "",
-        stock: "",
-        categoria: "",
-        proveedor: "",
-        imagenUrl: "",
-      });
-      setProductoExiste(false);
-      return;
-    }
-
-    // Si la URL ya es completa, extraer solo el nombre
-    let nombreImagen = "";
-if (productoEdit.imagenUrl) {
-  const baseURL = "https://github.com/DiegoPanno/facTienda/raw/main/frontend/public/productos-img/";
-  nombreImagen = productoEdit.imagenUrl.replaceAll(baseURL, "");
-
-  if (nombreImagen.includes("/")) {
-    const partes = nombreImagen.split("/");
-    nombreImagen = partes[partes.length - 1];
+ useEffect(() => {
+  if (!productoEdit) {
+    setProducto({
+      id: "",
+      codigoBarras: "",
+      titulo: "",
+      descripcion: "",
+      precioBase: "",
+      margen: "",
+      stock: "",
+      categoria: "",
+      proveedor: "",
+      imagenUrl: "",
+    });
+    setProductoExiste(false);
+    return;
   }
+
+  // ✅ Esta parte limpia correctamente la URL duplicada
+const baseURL = "https://github.com/DiegoPanno/facTienda/raw/main/frontend/public/productos-img/";
+let nombreImagen = "";
+
+if (productoEdit.imagenUrl) {
+  // 1. Eliminar cualquier ocurrencia de la baseURL repetida
+  let limpia = productoEdit.imagenUrl;
+  while (limpia.includes(baseURL)) {
+    limpia = limpia.replace(baseURL, "");
+  }
+
+  // 2. Asegurar que quede solo el nombre
+  const partes = limpia.split("/");
+  nombreImagen = partes[partes.length - 1];
 }
 
 
-    setProducto({
-      id: productoEdit.id || "",
-      codigoBarras: productoEdit.codigoBarras || "",
-      titulo: productoEdit.titulo || "",
-      descripcion: productoEdit.descripcion || "",
-      precioBase: productoEdit.precioBase || "",
-      margen: productoEdit.margen || "",
-      stock: productoEdit.stock || "",
-      categoria: productoEdit.categoria || "",
-      proveedor: productoEdit.proveedor || "",
-      imagenUrl: nombreImagen || "",
-    });
-    setProductoExiste(true);
-  }, [productoEdit]);
+  setProducto({
+    id: productoEdit.id || "",
+    codigoBarras: productoEdit.codigoBarras || "",
+    titulo: productoEdit.titulo || "",
+    descripcion: productoEdit.descripcion || "",
+    precioBase: productoEdit.precioBase || "",
+    margen: productoEdit.margen || "",
+    stock: productoEdit.stock || "",
+    categoria: productoEdit.categoria || "",
+    proveedor: productoEdit.proveedor || "",
+    imagenUrl: nombreImagen || "",
+  });
+  setProductoExiste(true);
+}, [productoEdit]);
+
 
   useEffect(() => {
     const verificarExistenciaProducto = async () => {
